@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "eventId": "018f0f4e-39a7-72d8-9f0a-06c26ed41dc0",
+  "sourceInstanceId": "source_opencode_local",
+  "provider": "opencode",
+  "providerVersion": "2.2.0",
+  "launcher": "unknown",
+  "nativeSessionId": "session_fixture_001",
+  "projectId": "project_fixture_001",
+  "eventType": "tool.completed",
+  "occurredAt": "2026-11-02T07:00:00Z",
+  "observedAt": "2026-11-02T07:00:01Z",
+  "privacyClass": "metadata",
+  "outcome": "failed",
+  "metadata": {
+    "toolName": "bash",
+    "inputDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "outputDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "durationMs": 120,
+    "errorCode": "exit-1"
+  }
+}
+

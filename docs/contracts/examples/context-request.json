@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "provider": "codex",
+  "sourceInstanceId": "source_codex_local",
+  "projectId": "project_fixture_001",
+  "nativeSessionId": "session_fixture_002",
+  "query": "fix a recurring Java test failure",
+  "maxItems": 5,
+  "maxTokens": 600
+}
+

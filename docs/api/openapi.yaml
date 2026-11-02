@@ -1,0 +1,298 @@
+openapi: 3.1.0
+info:
+  title: Adaptive Harness Local API
+  version: 1.0.0-draft
+  description: |
+    Proposed local API. No daemon is implemented. All data endpoints require a
+    user-private bearer token. Server must bind only to 127.0.0.1.
+servers:
+  - url: http://127.0.0.1:{port}
+    variables:
+      port:
+        default: "37841"
+        description: Illustrative only; actual port is resolved from private discovery.
+tags:
+  - name: runtime
+  - name: ingestion
+  - name: context
+  - name: diagnostics
+security:
+  - LocalToken: []
+paths:
+  /health:
+    get:
+      tags: [runtime]
+      summary: Protocol health only; returns no user data
+      security: []
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status, protocolVersion]
+                properties:
+                  status: { type: string, enum: [ok, degraded] }
+                  protocolVersion: { type: integer, const: 1 }
+  /v1/events:
+    post:
+      tags: [ingestion]
+      summary: Persist a sanitized canonical event (idempotent)
+      operationId: ingestEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CanonicalEvent"
+      responses:
+        "202":
+          description: New event persisted and queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventReceipt" }
+        "200":
+          description: Exact duplicate, already accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventReceipt" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Producer/event ID collision with a different payload hash
+        "413":
+          description: Event larger than configured limit
+        "429":
+          description: Ingestion backpressure; connector should spool or drop
+        "503":
+          description: Daemon is degraded; adapter must not fail agent operation
+  /v1/context/resolve:
+    post:
+      tags: [context]
+      summary: Resolve bounded project-scoped published context
+      operationId: resolveContext
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContextRequest" }
+      responses:
+        "200":
+          description: Context items and provenance
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContextResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /v1/artifacts:
+    get:
+      tags: [diagnostics]
+      summary: List authorized published artifacts
+      parameters:
+        - name: projectId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Published artifact summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ArtifactSummary" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /v1/evaluations:
+    get:
+      tags: [diagnostics]
+      summary: List evaluation results for an authorized project
+      parameters:
+        - name: projectId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Evaluation summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/EvaluationSummary" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+components:
+  securitySchemes:
+    LocalToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-local-token
+      description: Local user-private 256-bit random token, never exposed in process args.
+  responses:
+    BadRequest:
+      description: Schema or semantic validation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Invalid or missing local token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Scope or project identity is not authorized
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    CanonicalEvent:
+      description: Canonical event schema from ../contracts/event-v1.schema.json
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - eventId
+        - sourceInstanceId
+        - provider
+        - nativeSessionId
+        - projectId
+        - eventType
+        - occurredAt
+        - observedAt
+        - privacyClass
+      properties:
+        schemaVersion: { type: integer, const: 1 }
+        eventId: { type: string, format: uuid }
+        sourceInstanceId: { type: string, minLength: 8, maxLength: 128 }
+        provider: { type: string, enum: [codex, opencode] }
+        providerVersion: { type: [string, "null"], maxLength: 64 }
+        launcher: { type: string, enum: [cli, t3, other, unknown] }
+        nativeSessionId: { type: string, minLength: 1, maxLength: 256 }
+        parentNativeSessionId: { type: [string, "null"], maxLength: 256 }
+        nativeAgentId: { type: [string, "null"], maxLength: 256 }
+        parentNativeAgentId: { type: [string, "null"], maxLength: 256 }
+        turnId: { type: [string, "null"], maxLength: 256 }
+        spanId: { type: [string, "null"], maxLength: 128 }
+        parentSpanId: { type: [string, "null"], maxLength: 128 }
+        runtimeMode: { type: [string, "null"], maxLength: 64 }
+        projectId: { type: string, minLength: 8, maxLength: 128 }
+        eventType:
+          type: string
+          enum: [session.started, session.ended, turn.started, turn.ended, tool.started, tool.completed, subagent.started, subagent.ended, message.corrected, provider.diagnostic]
+        occurredAt: { type: string, format: date-time }
+        observedAt: { type: string, format: date-time }
+        privacyClass: { type: string, enum: [metadata, redacted_excerpt] }
+        outcome: { type: string, enum: [succeeded, failed, cancelled, blocked, unknown] }
+        metadata:
+          type: object
+          additionalProperties: false
+          properties:
+            toolName: { type: string, maxLength: 128 }
+            inputDigest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+            outputDigest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+            durationMs: { type: integer, minimum: 0 }
+            inputTokens: { type: integer, minimum: 0 }
+            outputTokens: { type: integer, minimum: 0 }
+            cacheReadTokens: { type: integer, minimum: 0 }
+            errorCode: { type: string, maxLength: 128 }
+            diagnosticCode: { type: string, maxLength: 128 }
+            resultCategory: { type: string, maxLength: 128 }
+            evidenceId: { type: string, maxLength: 128 }
+            correlationDigest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+    EventReceipt:
+      type: object
+      additionalProperties: false
+      required: [eventId, disposition, sequence]
+      properties:
+        eventId: { type: string, format: uuid }
+        disposition: { type: string, enum: [accepted, duplicate] }
+        sequence: { type: integer, minimum: 1 }
+    ContextRequest:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, provider, sourceInstanceId, projectId, nativeSessionId, query, maxItems, maxTokens]
+      properties:
+        schemaVersion: { type: integer, const: 1 }
+        provider: { type: string, enum: [codex, opencode] }
+        sourceInstanceId: { type: string, minLength: 8, maxLength: 128 }
+        projectId: { type: string, minLength: 8, maxLength: 128 }
+        nativeSessionId: { type: string, minLength: 1, maxLength: 256 }
+        query: { type: string, minLength: 1, maxLength: 2048 }
+        maxItems: { type: integer, minimum: 0, maximum: 20, default: 5 }
+        maxTokens: { type: integer, minimum: 0, maximum: 4096, default: 600 }
+    ContextResponse:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, items, estimatedTokens, truncated]
+      properties:
+        schemaVersion: { type: integer, const: 1 }
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [memoryId, scope, title, content, evidenceIds, artifactVersionId]
+            properties:
+              memoryId: { type: string }
+              scope: { type: string, enum: [project, global] }
+              title: { type: string }
+              content: { type: string }
+              evidenceIds: { type: array, items: { type: string } }
+              artifactVersionId: { type: string }
+        estimatedTokens: { type: integer, minimum: 0 }
+        truncated: { type: boolean }
+    ArtifactSummary:
+      type: object
+      required: [artifactId, kind, logicalKey, scope, versionId, status]
+      properties:
+        artifactId: { type: string }
+        kind: { type: string, enum: [skill, rule, memory] }
+        logicalKey: { type: string }
+        scope: { type: string, enum: [project, global] }
+        versionId: { type: string }
+        status: { type: string, enum: [active, superseded, rolled_back] }
+    EvaluationSummary:
+      type: object
+      required: [id, proposalId, status]
+      properties:
+        id: { type: string }
+        proposalId: { type: string }
+        status: { type: string, enum: [pending, running, passed, failed, inconclusive] }
+        baselineScore: { type: [number, "null"] }
+        candidateScore: { type: [number, "null"] }
+        reportDigest: { type: [string, "null"] }
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        traceId: { type: string }
+

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MasterSkimo/adaptative-harness/blob/main/docs/contracts/event-v1.schema.json",
+  "title": "Canonical Event Envelope V1",
+  "description": "Validated sanitized provider metadata; raw transcripts prohibited by default.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "eventId", "sourceInstanceId", "provider",
+    "nativeSessionId", "projectId", "eventType", "occurredAt",
+    "observedAt", "privacyClass"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventId": { "type": "string", "format": "uuid" },
+    "sourceInstanceId": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$" },
+    "provider": { "enum": ["codex", "opencode"] },
+    "providerVersion": { "type": ["string", "null"], "maxLength": 64 },
+    "launcher": { "enum": ["cli", "t3", "other", "unknown"] },
+    "runtimeMode": { "type": ["string", "null"], "maxLength": 64 },
+    "nativeSessionId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "parentNativeSessionId": { "type": ["string", "null"], "maxLength": 256 },
+    "turnId": { "type": ["string", "null"], "maxLength": 256 },
+    "nativeAgentId": { "type": ["string", "null"], "maxLength": 256 },
+    "parentNativeAgentId": { "type": ["string", "null"], "maxLength": 256 },
+    "spanId": { "type": ["string", "null"], "maxLength": 128 },
+    "parentSpanId": { "type": ["string", "null"], "maxLength": 128 },
+    "projectId": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$" },
+    "eventType": {
+      "enum": [
+        "session.started", "session.ended", "turn.started", "turn.ended",
+        "tool.started", "tool.completed", "subagent.started", "subagent.ended",
+        "message.corrected", "provider.diagnostic"
+      ]
+    },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "privacyClass": { "enum": ["metadata", "redacted_excerpt"] },
+    "outcome": { "enum": ["succeeded", "failed", "cancelled", "blocked", "unknown"] },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "toolName": { "type": "string", "maxLength": 128 },
+        "inputDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "outputDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "cacheReadTokens": { "type": "integer", "minimum": 0 },
+        "errorCode": { "type": "string", "maxLength": 128 },
+        "diagnosticCode": { "type": "string", "maxLength": 128 },
+        "resultCategory": { "type": "string", "maxLength": 128 },
+        "evidenceId": { "type": "string", "maxLength": 128 },
+        "correlationDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    }
+  }
+}
+
