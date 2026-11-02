@@ -1,4 +1,4 @@
-﻿import { readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
 import { Plugin } from "@opencode/plugin";
 
@@ -35,4 +35,3 @@ export default Plugin.define({
     return () => controller.abort();
   }
 });
-
