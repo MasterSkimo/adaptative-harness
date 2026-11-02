@@ -1,5 +1,5 @@
 # GitHub-native, ten-minute mechanical PR gate; no external AI or provider credentials.
-name: PR #1 readiness watchdog
+name: 'PR #1 readiness watchdog'
 on:
   schedule:
     - cron: '*/10 * * * *'
