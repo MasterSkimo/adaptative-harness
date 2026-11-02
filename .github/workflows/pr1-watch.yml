@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pr1-watch.yml'
+      - '.github/scripts/watch-pr1.mjs'
 permissions:
   contents: write
   pull-requests: write
@@ -21,6 +26,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Validate the watchdog script
+        run: node --check .github/scripts/watch-pr1.mjs
       - name: Check PR #1 readiness and merge only if gates pass
         env:
           GH_TOKEN: ${{ github.token }}
