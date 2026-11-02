@@ -1,0 +1,17 @@
+# Local build products, private runtime storage and secrets.
+node_modules/
+dist/
+coverage/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.env
+.env.*
+!.env.example
+.local/
+.adaptive-harness/
+spool/
+
