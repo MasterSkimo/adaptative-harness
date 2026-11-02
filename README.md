@@ -2,7 +2,7 @@
 
 Provider-independent, local-first **learning and governance companion** for coding agents. The repository intentionally retains its published name `adaptative-harness`.
 
-> **Status: architecture/specification V1. No agent connector, daemon or learning workflow is implemented yet.**
+> **Status: M1 event-ingestion prototype. The daemon, SQLite adapter and OpenCode connector are under validation; learning workflows are not implemented.**
 
 ## Objective
 
@@ -35,8 +35,8 @@ Learn from Codex and OpenCode executions, retain evidence-backed memories, evalu
 ## Proposed repository shape
 
 ```text
-apps/{daemon,cli}/                 # Implement in milestones, not present yet
-packages/{contracts,connectors,core,storage}/  # Implement after Spike 0
+apps/{daemon,cli}/                 # Local HTTP daemon and command entry points
+packages/{contracts,connectors,core,storage}/  # Contracts, provider adapter, storage
 docs/architecture/                # Component and sequence boundaries
 docs/api/                         # Local API contract
 docs/contracts/                   # Event/adapter contracts and fixtures
@@ -49,7 +49,7 @@ migrations/                       # Initial SQLite schema (design artifact)
 
 ## V1 delivery sequence
 
-**Spike 0: OpenCode 2 attachment verified on Windows; remaining reliability/Linux checks open** → **M1: OpenCode event ingestion + memory** → **M2: learning + evaluation + publication** → **M3: guardrails and optional T3 UI**. **Codex support is deferred**, not removed from the provider-neutral design.
+**Spike 0: OpenCode 2 attachment verified on Windows; remaining reliability/Linux checks open** â†’ **M1: OpenCode event ingestion + memory** â†’ **M2: learning + evaluation + publication** â†’ **M3: guardrails and optional T3 UI**. **Codex support is deferred**, not removed from the provider-neutral design.
 
 Proceed with OpenCode-only implementation after the observed Windows CLI/T3 attachment. Before claiming an OpenCode release, validate fail-open operation, durability, child-agent coverage where supported, and Linux. Codex CLI/T3 attachment does not gate the first release. See [ADR-0009](docs/adr/0009-opencode-first-release.md).
 
@@ -66,3 +66,5 @@ See [ADR index](docs/adr/README.md) for alternatives and consequences.
 ## License
 
 No license has been selected. The repository is public, but publication does not by itself grant reuse or redistribution rights. Choose a license before inviting external contributions.
+
+See [M1 ingestion usage and limitations](docs/operations/m1-ingestion.md).

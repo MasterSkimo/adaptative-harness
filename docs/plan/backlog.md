@@ -2,7 +2,7 @@
 
 **Delivery focus (ADR-0009): OpenCode 2.x only for the first release.** Preserve provider-neutral contracts but do not implement the Codex adapter or block M1 on Codex App Server hook trust. Every item links to test IDs, accepted ADRs and measured results. Windows OpenCode CLI/T3 attachment has been observed; degradation, Linux and skill reload remain open.
 
-## S0 — OpenCode 2 connectivity and reliability
+## S0 Ã¢â‚¬â€ OpenCode 2 connectivity and reliability
 
 - [x] S0-01: Capture Windows OpenCode runtime, T3 version and project-local effective plugin loading (AT-002; global inheritance still unknown).
 - [x] S0-02: Observe OpenCode 2.x plugin startup, tool pre/post, context injection and skill discovery under direct CLI AND T3 on Windows (AT-007; [evidence](spike-0-windows-evidence.md)).
@@ -16,9 +16,9 @@
 - [ ] D-CODEX-01: Diagnose Codex App Server hooks/list, project trust and effective shadow CODEX_HOME in T3 (AT-006).
 - [ ] D-CODEX-02: Add Codex connector and cross-provider tests when native hook activation is demonstrable (AT-006/028).
 
-## M1 — OpenCode event collector and memory
+## M1 Ã¢â‚¬â€ OpenCode event collector and memory
 
-**First implementation increment:** scaffold Node/pnpm workspace and OpenCode 2 plugin; implement sanitized event POST with SQLite dedupe and local bearer auth. Next increment: durable queue/spool and a bounded context resolver. Build daemon/provider connector independently of T3. Limit the first vertical slice to one observed tool failure → one verified repair → evidence-linked project memory → retrieval in a new OpenCode session; do not generate skills yet.
+**First implementation increment:** scaffold Node/pnpm workspace and OpenCode 2 plugin; implement sanitized event POST with SQLite dedupe and local bearer auth. Next increment: durable queue/spool and a bounded context resolver. Build daemon/provider connector independently of T3. Limit the first vertical slice to one observed tool failure Ã¢â€ â€™ one verified repair Ã¢â€ â€™ evidence-linked project memory Ã¢â€ â€™ retrieval in a new OpenCode session; do not generate skills yet.
 
 
 - [ ] M1-01: Monorepo scaffold, contract schemas and versioned local API (AT-003/004/025).
@@ -30,7 +30,7 @@
 - [ ] M1-07: FTS5 retrieval and context injection with bounded response/timeout (AT-011/012).
 - [ ] M1-08: CLI status/doctor plus observability counters, no extra raw transcript log (AT-019).
 
-## M2 — Automated self-learning
+## M2 Ã¢â‚¬â€ Automated self-learning
 
 - [ ] M2-01: Pluggable inference interface with disabled default and per-project caps (AT-016).
 - [ ] M2-02: Deterministic signal detection, candidate dedupe and scope evaluation (AT-010/013).
@@ -40,7 +40,7 @@
 - [ ] M2-06: Rollback and drift reconciliation, including crash during publication (AT-015/023).
 - [ ] M2-07: Multi-project privacy and prompt-injection red-team suite (AT-012/022/026).
 
-## M3 — Guard and visibility (optional)
+## M3 Ã¢â‚¬â€ Guard and visibility (optional)
 
 - [ ] M3-01: Deterministic loop signatures with false-positive benchmark (AT-017).
 - [ ] M3-02: Enable native provider blocking only for proven capability and policy (AT-018).
@@ -57,3 +57,15 @@
 - Evidence and tests included with each behavior change; keep releases reversible.
 - Use automated tests for migrations and normalizers and replay tests for provider adapters.
 
+
+## M1 ingestion implementation status (2026-11-02)
+
+Prototype implementation in progress: canonical validation, local HTTP ingestion, SQLite transaction/idempotency and an OpenCode 2 native plugin are present. Windows direct CLI produced two tool starts and two completions after a failed then successful command; outcome was not exposed in persisted events. An offline CLI task completed. Node 24 Windows: typecheck and 15 Vitest cases passed; Python specification tests: 6 passed. These are not the full M1 acceptance gate. A Windows T3 Code 0.1.6 / OpenCode 2.2.5 UI run also persisted two tool starts and two tool completions for failed and successful reads, and continued after the daemon stopped; outcomes and call spans were absent. Open: Linux, reliable outcome and lifecycle coverage, installer/ACL hardening, automated native integration, concurrency and transaction-failure tests, robust lifecycle, durable bounded spool and explicit loss reporting.
+
+## PR review follow-up (2026-11-02)
+
+Fixed BOMs and verified Windows/Linux GitHub TypeScript and specification jobs on commit 85e5e8d. OpenCode SDK 2.2.5 types identify native tool call IDs; a Windows CLI probe observed matching hashed spans for each of two shell calls, both with unknown outcome because the native completion did not establish the command exit status. Added an emitted bundle, cross-process duplicate/startup tests, rollback and lock tests, and authenticated daemon identity. Durable offline replay/loss accounting and automated native/Linux validation remain open. Startup locks fail closed after an unclean crash; Windows ACL checks cover the daemon's own directory and files but broader adversarial validation remains open.
+
+## Linux container validation (2026-11-02)
+
+Docker Linux / Node 24.22.2 / OpenCode 2.2.5: a deterministic local-model fixture triggered real native read-tool calls and validated ingestion, daemon-offline continuation, restart persistence and ingestion, and interruption between calls (four scenarios passed). The offline events were dropped; a durable spool remains open. Container results do not establish native Linux host, authenticated-model, or T3 Linux behavior. See [test instructions](../../tests/linux-opencode/README.md).

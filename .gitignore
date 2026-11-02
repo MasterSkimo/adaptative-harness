@@ -15,3 +15,6 @@ __pycache__/
 .adaptive-harness/
 spool/
 
+node_modules/
+dist/
+coverage/
