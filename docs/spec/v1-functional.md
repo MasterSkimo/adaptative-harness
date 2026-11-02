@@ -4,7 +4,7 @@
 
 ## Goal
 
-An autonomous, provider-independent local learning companion for coding agents. First targets: Codex and OpenCode 2.x, launched either directly or by T3 Code. No source-level dependency on T3.
+An autonomous, provider-independent local learning companion for coding agents. First release target: OpenCode 2.x, launched either directly or by T3 Code. Codex is a deferred connector; the core remains provider-independent. No source-level dependency on T3.
 
 ## V1 capabilities and requirement IDs
 
@@ -59,5 +59,5 @@ A new agent loop, DAG scheduling, cancellation and retry of agent tasks, UI-driv
 
 ## Dependencies and assumptions
 
-Spike 0 must prove native callbacks or independently retrievable traces for the *actual* T3 provider launching modes, not only direct CLI. The runtime APIs and feature flags are versioned and may differ across provider releases; unknown provider capabilities are reported as unsupported/unknown, never silently assumed.
+For the first OpenCode release, Spike 0 must prove native callbacks or independently retrievable traces for *OpenCode 2.x* in T3 and direct CLI; Windows attachment has been observed, while Linux/fail-open/recovery work remains. Codex App Server support is deferred by [ADR-0009](../adr/0009-opencode-first-release.md). The runtime APIs and feature flags are versioned and may differ across provider releases; unknown provider capabilities are reported as unsupported/unknown, never silently assumed.
 

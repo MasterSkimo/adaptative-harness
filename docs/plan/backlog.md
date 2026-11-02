@@ -1,17 +1,25 @@
 # Ordered implementation backlog
 
-**Rule:** every item must link to its test IDs, accepted ADRs and measured results. Do not build the full engine before Spike 0 is proven.
+**Delivery focus (ADR-0009): OpenCode 2.x only for the first release.** Preserve provider-neutral contracts but do not implement the Codex adapter or block M1 on Codex App Server hook trust. Every item links to test IDs, accepted ADRs and measured results. Windows OpenCode CLI/T3 attachment has been observed; degradation, Linux and skill reload remain open.
 
-## S0 — Connectivity (blocking)
+## S0 — OpenCode 2 connectivity and reliability
 
-- [ ] S0-01: Capture provider runtime versions, effective homes/config resolution, user scope and T3 commit (AT-002).
-- [ ] S0-02: Build reversible synthetic Codex observer; test direct CLI + T3 App Server (AT-001/005/006).
-- [ ] S0-03: Build reversible native OpenCode **2.x** plugin; test direct CLI + T3 server (AT-001/005/007).
-- [ ] S0-04: Capture before/after, child lineage and context capability matrix, including unavailable events (AT-002/005/006/007).
-- [ ] S0-05: Kill observer during agent call; verify fail-open and bounded overhead (AT-008/021).
-- [ ] S0-06: Repeat on Windows native and Linux; decide GO/NO-GO, publish replay fixtures, update ADR as needed (AT-020).
+- [x] S0-01: Capture Windows OpenCode runtime, T3 version and project-local effective plugin loading (AT-002; global inheritance still unknown).
+- [x] S0-02: Observe OpenCode 2.x plugin startup, tool pre/post, context injection and skill discovery under direct CLI AND T3 on Windows (AT-007; [evidence](spike-0-windows-evidence.md)).
+- [ ] S0-03: Verify sanitized native child-agent lifecycle/correlation, explicitly marking unavailable IDs unknown (AT-005).
+- [ ] S0-04: Kill collector during an OpenCode call, verify bounded fail-open timeout, spool/replay, no agent failure (AT-008/009/021).
+- [ ] S0-05: Verify skill publication/reload semantics and T3 OpenCode effective config inheritance (AT-002/015/024).
+- [ ] S0-06: Repeat OpenCode CLI and T3 integration on Linux; treat WSL as separate (AT-020).
 
-## M1 — Event collector and memory
+### Deferred (does not gate OpenCode M1)
+
+- [ ] D-CODEX-01: Diagnose Codex App Server hooks/list, project trust and effective shadow CODEX_HOME in T3 (AT-006).
+- [ ] D-CODEX-02: Add Codex connector and cross-provider tests when native hook activation is demonstrable (AT-006/028).
+
+## M1 — OpenCode event collector and memory
+
+**First implementation increment:** scaffold Node/pnpm workspace and OpenCode 2 plugin; implement sanitized event POST with SQLite dedupe and local bearer auth. Next increment: durable queue/spool and a bounded context resolver. Build daemon/provider connector independently of T3. Limit the first vertical slice to one observed tool failure → one verified repair → evidence-linked project memory → retrieval in a new OpenCode session; do not generate skills yet.
+
 
 - [ ] M1-01: Monorepo scaffold, contract schemas and versioned local API (AT-003/004/025).
 - [ ] M1-02: Daemon lifecycle, user-only token file, discovery, loopback binding and OS ACL tests (AT-020/025).

@@ -39,13 +39,17 @@ Record test ID, UTC time, OS/build, runtime version and exact provider instance,
 | AT-027 | P2 | Duplicate and out-of-order provider events do not alter terminal status or double-charge learning inference |
 | AT-028 | P3 | Two providers run simultaneously against same daemon; queue fairness and SQLite writing remain consistent |
 
-## Mandatory Spike 0 matrix
+## Initial OpenCode-only release acceptance
 
-Test **Codex CLI**, **Codex App Server launched by T3**, **OpenCode 2 CLI**, and **OpenCode 2 server launched by T3**, on Linux and Windows where supported. For each, record session lifecycle, before-tool, after-tool, child-agent lifecycle, context delivery, skill discovery and config root. Never mark unsupported native features as failures of the learning engine; classify them as connector coverage gaps and revise adapter plans.
+**ADR-0009 supersedes the multi-provider release gate:** require OpenCode 2 CLI and OpenCode 2 server launched by T3, on Linux and Windows where supported. AT-006 (Codex) and the cross-provider aspect of AT-028 are **deferred, not passed**; the generic schema and optional provider enum retain their future Codex extension. AT-001 is evaluated for OpenCode only in the initial release.
+
+## Mandatory first-release Spike 0 matrix
+
+Test **OpenCode 2 CLI** and **OpenCode 2 server launched by T3**, on Linux and Windows where supported. For each, record session lifecycle, before-tool, after-tool, child-agent lifecycle, context delivery, skill discovery and config root. Never mark unsupported native features as failures of the learning engine; classify them as connector coverage gaps and revise adapter plans.
 
 ## Minimum exit gates by milestone
 
-- **Spike 0:** real native callback or reliable read-only event source for **both** Codex and OpenCode under T3 on at least one target OS; no T3 core patch; native CLI behavior compared. If this fails, write a decision record rather than proceeding blindly.
+- **OpenCode Spike 0:** native OpenCode 2 plugin and context callback observed under Windows CLI and T3 (documented); complete fail-open, reload and Linux probes before release. No T3 core patch. Codex test AT-006 does not gate V1 per ADR-0009.
 - **M1 (memory):** AT-001–012, 016, 020–022, 025–026 relevant to collector and memory are passing.
 - **M2 (self-learning):** AT-013–015, 023–024, 027 pass with recorded baseline/candidate metrics. No executable auto-promotion.
 - **M3 (guard and visibility):** AT-017–019 and 028 pass; false-positive blocking must be demonstrably bounded.

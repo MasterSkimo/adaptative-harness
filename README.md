@@ -49,9 +49,13 @@ migrations/                       # Initial SQLite schema (design artifact)
 
 ## V1 delivery sequence
 
-**Spike 0: attachment feasibility** → **M1: event ingestion + memory** → **M2: learning + evaluation + publication** → **M3: guardrails and optional T3 UI**.
+**Spike 0: OpenCode 2 attachment verified on Windows; remaining reliability/Linux checks open** → **M1: OpenCode event ingestion + memory** → **M2: learning + evaluation + publication** → **M3: guardrails and optional T3 UI**. **Codex support is deferred**, not removed from the provider-neutral design.
 
-No feature work beyond the spike should begin until the attachment matrix is observed on both CLI and T3-launched agent sessions.
+Proceed with OpenCode-only implementation after the observed Windows CLI/T3 attachment. Before claiming an OpenCode release, validate fail-open operation, durability, child-agent coverage where supported, and Linux. Codex CLI/T3 attachment does not gate the first release. See [ADR-0009](docs/adr/0009-opencode-first-release.md).
+
+## Current delivery priority
+
+**OpenCode 2.x is the sole V1 runtime target.** Spike 0 observed plugin callbacks and context injection in both direct CLI and T3-launched sessions on Windows. Codex App Server hook delivery under T3 remains unverified; defer its adapter and acceptance gate rather than patching T3 or bypassing hook trust. See [Windows evidence](docs/plan/spike-0-windows-evidence.md) and [ADR-0009](docs/adr/0009-opencode-first-release.md).
 
 ## Initial technical decisions
 

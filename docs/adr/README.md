@@ -12,4 +12,5 @@ Status convention: **Accepted** = target architecture (subject to Spike 0 feasib
 | [0006](0006-fail-open-and-loop-guard.md) | Fail-open learning path, bounded guard | Accepted |
 | [0007](0007-inference-abstraction.md) | Replaceable LLM inference, no traffic proxy | Accepted |
 | [0008](0008-project-isolation.md) | Project-scoped learning and restricted globalization | Accepted |
+| [0009](0009-opencode-first-release.md) | Deliver OpenCode 2 first; defer Codex until native T3 attachment is evidenced | Accepted |
 

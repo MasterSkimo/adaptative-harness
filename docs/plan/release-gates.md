@@ -7,7 +7,7 @@ Main contains the current accepted specification and eventual release-quality im
 ## Gates
 
 - **Spec Gate:** schema tests, SQLite constraints and OpenAPI parse validation green on Linux and Windows. This tests documents, not runtime behavior.
-- **Spike Gate:** observed Codex/OpenCode attachability in T3 and CLI, versioned capability matrix, no core patch and fail-open proof.
+- **OpenCode Spike Gate:** Windows OpenCode 2 plugin attachment is observed in CLI and T3. **Before release**, finish fail-open, native reload, Linux and durability probes. Codex compatibility is not a release gate (ADR-0009).
 - **M1 Gate:** all relevant ingestion, privacy, memory and recovery acceptance tests; no raw transcript persistence by default.
 - **M2 Gate:** replay-backed improvements; deterministic benchmark data, no regressions on protected cases, rollback, and evidence-backed publication.
 - **M3 Gate:** measured false positives, guard disable/fallback, diagnostic CLI and optional T3 read-only UI.
@@ -15,7 +15,7 @@ Main contains the current accepted specification and eventual release-quality im
 
 ## Exit criteria
 
-A feature is not ready if a callback is only supported in a direct CLI but not the documented T3 scenario, unless that limitation is named and the provider is explicitly excluded from the release target. Failed or inconclusive evaluations cannot count as promotions. If evidence is missing, halt claims, not agent execution.
+For the initial release, the documented provider is **OpenCode 2.x only**; Codex is explicitly excluded and remains a deferred integration. An OpenCode feature is not ready if it works in CLI only but fails in the documented T3 scenario. Failed or inconclusive evaluations cannot count as promotions. If evidence is missing, halt claims, not agent execution.
 
 ## Compatibility and versioning
 
