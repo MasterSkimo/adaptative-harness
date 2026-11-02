@@ -4,8 +4,8 @@
 
 ## Preparation
 
-1. Snapshot provider versions: \`codex --version\`, \`opencode --version\`; note T3 commit/release and provider selection.
-2. Record the effective config paths: Codex \`CODEX_HOME\` and any shadow home; OpenCode config root and server launch environment, particularly \`OPENCODE_CONFIG_CONTENT\`.
+1. Snapshot provider versions: `codex --version`, `opencode --version`; note T3 commit/release and provider selection.
+2. Record the effective config paths: Codex `CODEX_HOME` and any shadow home; OpenCode config root and server launch environment, particularly `OPENCODE_CONFIG_CONTENT`.
 3. Back up original provider hook/plugin/config files and ACLs. Use test profiles or disposable project roots; never overwrite production global configuration in the spike.
 4. Create a synthetic repository containing one trivial file, a deterministic failing command and a succeeding correction; no customer source or account secrets.
 5. Define a local capture endpoint that accepts **sanitized event metadata only** and timestamps/hashes. No model proxy or OAuth interception.
@@ -21,7 +21,7 @@
 ### B — Codex via T3
 
 - Launch the same synthetic task in T3 with the Codex provider.
-- Observe whether the observer is loaded by the Codex App Server process, whether its effective \`CODEX_HOME\` matches the intended profile, and whether any shadow-home mappings share skills/plugins/hooks.
+- Observe whether the observer is loaded by the Codex App Server process, whether its effective `CODEX_HOME` matches the intended profile, and whether any shadow-home mappings share skills/plugins/hooks.
 - Compare exact event/correlation capabilities to direct CLI. Capture T3 release/commit and adapter behavior; no source patch.
 
 ### C — OpenCode 2 directly
@@ -32,7 +32,7 @@
 
 ### D — OpenCode 2 via T3
 
-- Launch OpenCode 2 from T3 and repeat C. Check inherited global/project config, \`OPENCODE_CONFIG_CONTENT\`, plugin loading and session event propagation.
+- Launch OpenCode 2 from T3 and repeat C. Check inherited global/project config, `OPENCODE_CONFIG_CONTENT`, plugin loading and session event propagation.
 - If plugin absent, isolate config resolution difference in a test environment. Test a non-invasive provider-native config workaround.
 - Do not patch T3 orchestration; classify any remaining gap.
 

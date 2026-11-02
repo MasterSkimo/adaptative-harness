@@ -53,5 +53,5 @@ Test **Codex CLI**, **Codex App Server launched by T3**, **OpenCode 2 CLI**, and
 
 ## Executable specification tests
 
-\`python -m unittest discover -s tests -v\` exercises the *published JSON schema, OpenAPI parseability and SQLite migration constraints*. These are design-artifact validation tests and **do not** count as the provider integration or learning acceptance tests above.
+`python -m unittest discover -s tests -v` exercises the *published JSON schema, OpenAPI parseability and SQLite migration constraints*. These are design-artifact validation tests and **do not** count as the provider integration or learning acceptance tests above.
 
