@@ -1,15 +1,15 @@
 # Provider and launcher compatibility — test matrix
 
-**None of the combinations below is claimed verified by this repository.** Evidence is required from Spike 0, with exact versions, config roots, platform, expected and observed events.
+Windows spot checks are recorded in [Spike 0 Windows evidence](../plan/spike-0-windows-evidence.md). Linux remains untested, and no complete CLI-to-T3 compatibility claim is made. Evidence requires exact versions, config roots, platform, expected and observed events.
 
 | Runtime / launcher | Linux CLI | Linux T3 | Windows CLI | Windows T3 | Evidence |
 |---|---|---|---|---|---|
-| Codex (App Server path in T3) | Unknown | Unknown | Unknown | Unknown | Pending |
-| OpenCode 2.x native plugin | Unknown | Unknown | Unknown | Unknown | Pending |
-| Codex native hook trust | Unknown | Unknown | Unknown | Unknown | Pending |
-| OpenCode 2.x plugin startup/reload | Unknown | Unknown | Unknown | Unknown | Pending |
-| Child-agent correlation | Unknown | Unknown | Unknown | Unknown | Pending |
-| Published skill discovery | Unknown | Unknown | Unknown | Unknown | Pending |
+| Codex (App Server path in T3) | Unknown | Unknown | Direct CLI hooks observed | Task completed; project hook events not observed | Partial; see Windows evidence |
+| OpenCode 2.x native plugin | Unknown | Unknown | Plugin and tool hooks observed | Plugin and tool hooks observed | Partial; see Windows evidence |
+| Codex native hook trust | Unknown | Unknown | Project hooks ran with explicit trust bypass | T3 project hooks not observed | Partial; see Windows evidence |
+| OpenCode 2.x plugin startup/reload | Unknown | Unknown | Startup observed; reload untested | Startup observed; reload untested | Partial; see Windows evidence |
+| Child-agent correlation | Unknown | Unknown | Codex lifecycle hooks observed; OpenCode lineage untested | Codex and OpenCode child tasks completed; native lineage not observed | Partial; see Windows evidence |
+| Published skill discovery | Unknown | Unknown | Project skill discovery observed for both providers | OpenCode skill loaded; Codex result not recorded | Partial; see Windows evidence |
 
 ## Capability enumeration
 

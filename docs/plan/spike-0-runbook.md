@@ -2,6 +2,8 @@
 
 **Goal:** demonstrate native connector coverage for Codex and OpenCode 2, launched directly and by T3, on Linux and Windows, **without any modification to T3 core**. This is not an implementation of learning.
 
+Windows execution results are recorded in [Spike 0 Windows evidence](spike-0-windows-evidence.md). The report is a partial platform result; Linux, T3 Codex hook attachment, and degradation/spool checks remain open. OpenCode plugin attachment under T3 was observed on Windows.
+
 ## Preparation
 
 1. Snapshot provider versions: `codex --version`, `opencode --version`; note T3 commit/release and provider selection.
