@@ -19,6 +19,7 @@ export function createApi(token: string, sink: EventSink, shutdown?: () => void)
     if (!/^127\.0\.0\.1(?::\d+)?$/.test(host) || req.headers.origin) return json(res, 403, { code: "FORBIDDEN", message: "Invalid request origin" });
     if (req.method === "GET" && req.url === "/health") return json(res, 200, { status: "ok", protocolVersion: 1 });
     if (!sameToken(req.headers.authorization, token)) return json(res, 401, { code: "UNAUTHORIZED", message: "Unauthorized" });
+    if (req.method === "GET" && req.url === "/v1/identity") return json(res, 200, { pid: process.pid });
     if (req.method === "POST" && req.url === "/v1/shutdown" && shutdown) { json(res, 200, { status: "stopping" }); setImmediate(shutdown); return; }
     if (req.method !== "POST" || req.url !== "/v1/events") return json(res, 404, { code: "NOT_FOUND", message: "Not found" });
     if (!/^application\/json(?:\s*;|$)/i.test(req.headers["content-type"] ?? "")) return json(res, 400, { code: "INVALID_REQUEST", message: "Expected JSON" });

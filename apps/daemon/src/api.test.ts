@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { createApi } from "./api.js";
 import type { Server } from "node:http";
@@ -14,6 +14,8 @@ describe("local ingestion HTTP", () => {
     let calls = 0; const url = await start(() => ({ disposition: calls++ ? "duplicate" : "accepted", sequence: 1 })); const e = event();
     const post = (body: unknown, auth = "Bearer secret-token") => fetch(url + "/v1/events", { method: "POST", headers: { authorization: auth, "content-type": "application/json" }, body: JSON.stringify(body) });
     expect((await fetch(url + "/health")).status).toBe(200);
+    expect((await fetch(url + "/v1/identity")).status).toBe(401);
+    expect(await (await fetch(url + "/v1/identity", {headers:{authorization:"Bearer secret-token"}})).json()).toEqual({pid:process.pid});
     expect((await post(e, "Bearer invalid")).status).toBe(401);
     expect((await post({...e, metadata: { prompt: "secret" }})).status).toBe(400);
     expect((await post(e)).status).toBe(202); expect((await post(e)).status).toBe(200);
