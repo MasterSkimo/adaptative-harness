@@ -19,7 +19,7 @@ A feature is not ready if a callback is only supported in a direct CLI but not t
 
 ## Compatibility and versioning
 
-SemVer for the independent Harness itself; wire \`schemaVersion\` and \`protocolVersion\` evolve independently with migration and deprecation windows. Provider versions are tested against supported ranges; unsupported providers degrade to non-blocking diagnostics. Never assume T3 version == provider runtime version.
+SemVer for the independent Harness itself; wire `schemaVersion` and `protocolVersion` evolve independently with migration and deprecation windows. Provider versions are tested against supported ranges; unsupported providers degrade to non-blocking diagnostics. Never assume T3 version == provider runtime version.
 
 ## License and governance
 
