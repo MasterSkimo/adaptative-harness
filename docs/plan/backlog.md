@@ -65,3 +65,7 @@ Prototype implementation in progress: canonical validation, local HTTP ingestion
 ## PR review follow-up (2026-11-02)
 
 Fixed BOMs and verified Windows/Linux GitHub TypeScript and specification jobs on commit 85e5e8d. OpenCode SDK 2.2.5 types identify native tool call IDs; a Windows CLI probe observed matching hashed spans for each of two shell calls, both with unknown outcome because the native completion did not establish the command exit status. Added an emitted bundle, cross-process duplicate/startup tests, rollback and lock tests, and authenticated daemon identity. Durable offline replay/loss accounting and automated native/Linux validation remain open. Startup locks fail closed after an unclean crash; Windows ACL checks cover the daemon's own directory and files but broader adversarial validation remains open.
+
+## Linux container validation (2026-11-02)
+
+Docker Linux / Node 24.22.2 / OpenCode 2.2.5: a deterministic local-model fixture triggered real native read-tool calls and validated ingestion, daemon-offline continuation, restart persistence and ingestion, and interruption between calls (four scenarios passed). The offline events were dropped; a durable spool remains open. Container results do not establish native Linux host, authenticated-model, or T3 Linux behavior. See [test instructions](../../tests/linux-opencode/README.md).
