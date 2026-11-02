@@ -13,14 +13,14 @@
 
 ## Capability enumeration
 
-Every adapter reports a \`supported | unsupported | unknown\` state plus reason/evidence for each: \`session_events\`, \`tool_before\`, \`tool_after\`, \`subagent_lifecycle\`, \`transcript_reference\`, \`context_injection\`, \`compaction\`, \`synchronous_block\`, \`skills_read\`, \`skills_write\`, \`config_reload\`.
+Every adapter reports a `supported | unsupported | unknown` state plus reason/evidence for each: `session_events`, `tool_before`, `tool_after`, `subagent_lifecycle`, `transcript_reference`, `context_injection`, `compaction`, `synchronous_block`, `skills_read`, `skills_write`, `config_reload`.
 
 Unknown is distinct from unsupported; do not use a feature until a local doctor proves it.
 
 ## T3-specific probes
 
-- OpenCode server environment: compare plugin load behavior when \`OPENCODE_CONFIG_CONTENT\` is set to \`{}\` and when omitted/merged. Native OpenCode config resolution may vary with server revision.
-- Codex App Server: determine effective \`CODEX_HOME\`, whether shadow-home symlinks expose global hooks/skills, hook trust mode and subagent lifecycle events.
+- OpenCode server environment: compare plugin load behavior when `OPENCODE_CONFIG_CONTENT` is set to `{}` and when omitted/merged. Native OpenCode config resolution may vary with server revision.
+- Codex App Server: determine effective `CODEX_HOME`, whether shadow-home symlinks expose global hooks/skills, hook trust mode and subagent lifecycle events.
 - Compare direct CLI and T3 session provenance; do not assume same storage/profile even on same OS user.
 - Never replace T3 adapter or agent orchestration code to make a probe pass.
 
