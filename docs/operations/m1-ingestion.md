@@ -1,0 +1,15 @@
+﻿# M1 event ingestion prototype
+
+Requires Node 24 LTS, pnpm 10.20.0 and OpenCode 2.x. In a checkout run `pnpm install --frozen-lockfile`, `pnpm build`, and `pnpm test`. The Python specification suite is separate; see `.github/workflows/spec-validation.yml` for its dependencies.
+
+Register a source and project with `pnpm exec tsx apps/daemon/src/main.ts register source_example project_example`. Use locally chosen opaque IDs (8–128 letters, numbers, underscore or hyphen); a source is bound to one project. Start the daemon in a terminal with `pnpm exec tsx apps/daemon/src/main.ts start`. It stays in the foreground. In another terminal use `pnpm exec tsx apps/daemon/src/main.ts doctor` or `pnpm exec tsx apps/daemon/src/main.ts stop`. Data, discovery, and token are under `%LOCALAPPDATA%/.adaptive-harness` on Windows or `$HOME/.adaptive-harness` on POSIX. The HTTP service listens on an ephemeral loopback port. Stopping uses an authenticated request, not an unverified PID signal.
+
+On Windows, install into a project with `./packages/connectors/opencode-v2/install.ps1 -Project <project-directory>`. Create `.opencode/adaptative-harness.json` inside that project with `sourceInstanceId`, `projectId`, `discoveryFile` and `tokenFile`; the two file paths point to `daemon.json` and `token` in the state directory. Paths stay local; the file contains no token. See the connector README. Uninstall using `uninstall.ps1 -Project <project-directory>`; modified plugin files are preserved. Restart OpenCode after installation.
+
+Events contain allowlisted metadata only. Tool inputs, outputs and prompts are not sent. The native tool callbacks currently produce start and completion events without asserting success or failure. The connector drops events on errors or after its bounded in-flight limit; no durable spool or retries exist. Diagnostic counts are best effort. Process termination can lose outstanding asynchronous sends.
+
+## Verification and limitations
+
+On Windows 11, OpenCode 2.2.5 direct CLI (`--standalone`, `openai/gpt-6-luna`) ran one shell command exiting 1 and a separate successful command. With this daemon active, SQLite contained two `tool.started` and two `tool.completed` rows with distinct event IDs; outcome was absent on all four. A separate direct CLI task completed with the daemon stopped. These probes do not establish T3 integration, child-agent lineage, outcome capture, daemon crash recovery under load, Linux behavior, installer safety on POSIX, or security of all Windows ACL and concurrent-start edge cases. Do not treat this prototype as production-ready until those gaps are closed. A bounded durable spool with visible loss accounting is the next increment.
+
+If events do not arrive, verify the project-local plugin path `.opencode/plugins/adaptative-harness/index.ts`, IDs and token/discovery paths, run doctor, and confirm source registration. Check connector diagnostics without copying tokens or tool output into reports. A `403` means the source/project binding does not match; `409` means an event ID was reused with different content. Version and launcher evidence must be recorded separately for T3.

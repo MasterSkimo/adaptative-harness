@@ -1,4 +1,4 @@
-﻿import { createServer, type Server } from "node:http";
+import { createServer, type Server } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { eventSchema } from "../../../packages/contracts/src/index.js";
 
@@ -45,4 +45,3 @@ export function createApi(token: string, sink: EventSink, shutdown?: () => void)
   server.requestTimeout = 5000; server.headersTimeout = 6000; server.maxConnections = 64;
   return server;
 }
-

@@ -57,3 +57,7 @@
 - Evidence and tests included with each behavior change; keep releases reversible.
 - Use automated tests for migrations and normalizers and replay tests for provider adapters.
 
+
+## M1 ingestion implementation status (2026-11-02)
+
+Prototype implementation in progress: canonical validation, local HTTP ingestion, SQLite transaction/idempotency and an OpenCode 2 native plugin are present. Windows direct CLI produced two tool starts and two completions after a failed then successful command; outcome was not exposed in persisted events. An offline CLI task completed. Node 24 Windows: typecheck and 15 Vitest cases passed; Python specification tests: 6 passed. These are not the full M1 acceptance gate. Open: T3 verification for this implementation, Linux, reliable outcome and lifecycle coverage, installer/ACL hardening, automated native integration, concurrency and transaction-failure tests, robust lifecycle, durable bounded spool and explicit loss reporting.

@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -50,4 +50,3 @@ describe('SqliteStorage', () => {
     expect(reopened.ingest(event())).toEqual({ disposition: 'duplicate', sequence: accepted.sequence });
   });
 });
-

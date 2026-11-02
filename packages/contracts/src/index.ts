@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 const noPathOrSecret = (max: number) => z.string().min(1).max(max).refine(v => /^[A-Za-z0-9_.:-]+$/.test(v) && !/[\\/]|\.\.|(?:^|[=:])\s*(?:sk-|ghp_|github_pat_|Bearer\s|api[_-]?key|secret|token)/i.test(v), "Must not contain paths or secret-like values");
 const metadataText = noPathOrSecret(128);
 const digest = z.string().regex(/^sha256:[0-9a-f]{64}$/);
@@ -24,4 +24,3 @@ export const eventSchema = z.object({
   metadata: metadataSchema.optional(),
 }).strict();
 export type CanonicalEvent = z.infer<typeof eventSchema>;
-

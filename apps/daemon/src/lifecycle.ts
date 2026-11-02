@@ -1,4 +1,4 @@
-﻿import { randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile, chmod, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -49,10 +49,3 @@ export async function register(sourceInstanceId: string, projectId: string) {
   await secureDir(); const db = new SqliteStorage(join(stateDir, "harness.sqlite"));
   try { db.register({ sourceInstanceId, projectId }); } finally { db.close(); }
 }
-
-
-
-
-
-
-
