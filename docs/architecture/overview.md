@@ -10,7 +10,7 @@ T3 Code is an optional UI/launcher. Direct CLI usage and T3-launched usage must 
 
 ## Context diagram
 
-\`\`\`mermaid
+```mermaid
 flowchart TB
   T3[T3 Code - optional launcher/viewer]
   CLI[Direct Codex / OpenCode CLI]
@@ -33,7 +33,7 @@ flowchart TB
   H --> F
   H -. published skills / rules / context .-> CA
   H -. published skills / rules / context .-> OA
-\`\`\`
+```
 
 ## Internal bounded contexts
 

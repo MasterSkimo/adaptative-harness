@@ -8,22 +8,22 @@ Per-user data root is configurable, with OS-specific defaults selected at implem
 
 ## Schema aggregates
 
-- \`projects\`, \`project_roots\`: opaque identities and verified workspace roots.
-- \`provider_instances\`, \`sessions\`: actual runtime/profile/session and parent lineage.
-- \`events\`: append-only canonical event envelopes, unique on producer ID+event ID.
-- \`processing_jobs\`: durable work, idempotency keys, leases, retry/dead states.
-- \`evidence\`: redacted references and hashes to observed outcomes.
-- \`memories\`, \`memory_evidence\`, \`memory_fts\`: structured scoped knowledge and indexed retrieval.
-- \`artifacts\`, \`artifact_versions\`, \`proposals\`, \`evaluations\`, \`releases\`, \`publication_targets\`: candidate lifecycle, immutable versions and install receipts.
-- \`inference_usage\`, \`audit_log\`, \`schema_migrations\`: accountability and migrations.
+- `projects`, `project_roots`: opaque identities and verified workspace roots.
+- `provider_instances`, `sessions`: actual runtime/profile/session and parent lineage.
+- `events`: append-only canonical event envelopes, unique on producer ID+event ID.
+- `processing_jobs`: durable work, idempotency keys, leases, retry/dead states.
+- `evidence`: redacted references and hashes to observed outcomes.
+- `memories`, `memory_evidence`, `memory_fts`: structured scoped knowledge and indexed retrieval.
+- `artifacts`, `artifact_versions`, `proposals`, `evaluations`, `releases`, `publication_targets`: candidate lifecycle, immutable versions and install receipts.
+- `inference_usage`, `audit_log`, `schema_migrations`: accountability and migrations.
 
 ## Database invariants
 
 - PRAGMA foreign_keys=ON on every connection; journal_mode=WAL, busy_timeout=5000 set at startup (not inside migrations).
 - Accept events in a short transaction; check producer+event ID deduplication. Response is 202 new or 200 exact duplicate.
-- Store event \`payload_json\` as **sanitized** metadata only; never blindly persist original HTTP body.
+- Store event `payload_json` as **sanitized** metadata only; never blindly persist original HTTP body.
 - Event ingestion and creation of its initial processing job occur in the same transaction. Recovery scans for unmatched events to handle schema-era or external producer differences.
-- Lease claim is a single write transaction that checks \`status='queued'\` or lease expiry. All consumers use compare-and-swap on lease owner and expiry.
+- Lease claim is a single write transaction that checks `status='queued'` or lease expiry. All consumers use compare-and-swap on lease owner and expiry.
 - Proposal content and published artifact bytes are immutable and addressed by digest. A changed candidate creates a new proposal/version.
 - Referential integrity cannot alone enforce cross-project scope; every service method must verify caller scope and entity ownership in the transaction.
 - FTS triggers keep searchable summaries in sync. Ranking additionally filters active status and project/global permission outside the virtual table.

@@ -23,10 +23,10 @@ Filter before ranking: identity and project scope, sensitivity, status, expiry, 
 
 ## State machines
 
-- Proposal: \`draft -> evaluating -> eligible -> promoted\` or \`rejected/quarantined\`.
-- Evaluation: \`pending -> running -> passed/failed/inconclusive\`.
-- Release: \`staged -> active -> superseded\` or \`rolled_back/failed\`.
-- Job: \`queued -> leased -> succeeded\` or \`queued/failed\` (bounded retries), and \`dead\` after exhaustion.
+- Proposal: `draft -> evaluating -> eligible -> promoted` or `rejected/quarantined`.
+- Evaluation: `pending -> running -> passed/failed/inconclusive`.
+- Release: `staged -> active -> superseded` or `rolled_back/failed`.
+- Job: `queued -> leased -> succeeded` or `queued/failed` (bounded retries), and `dead` after exhaustion.
 
 Transitions must be transactionally checked; an evaluation may not promote another proposal. All writes store actor, timestamp, version and evidence.
 

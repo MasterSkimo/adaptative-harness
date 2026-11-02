@@ -2,7 +2,7 @@
 
 ## Observation → asynchronous learning
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
   participant A as Agent Runtime
   participant C as Native Connector
@@ -23,11 +23,11 @@ sequenceDiagram
     C->>C: bounded local spool or drop event with metric
     C-->>A: never block agent execution
   end
-\`\`\`
+```
 
 ## Context resolution
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
   participant A as Agent
   participant C as Provider Hook
@@ -43,11 +43,11 @@ sequenceDiagram
   else timeout or failure
     C-->>A: unchanged context
   end
-\`\`\`
+```
 
 ## Candidate evaluation and publication
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
   participant L as Learner
   participant E as Evaluator
@@ -66,7 +66,7 @@ sequenceDiagram
   else failed or unknown
     R->>R: reject / quarantine, retain report
   end
-\`\`\`
+```
 
 ## Crash and replay rules
 
