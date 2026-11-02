@@ -1,4 +1,4 @@
-﻿{
+{
     "name":  "adaptive-harness",
     "private":  true,
     "packageManager":  "pnpm@10.20.0",
@@ -6,12 +6,14 @@
                     "node":  "\u003e=24 \u003c25"
                 },
     "scripts":  {
-                    "build":  "tsc --noEmit",
+                    "build":  "node scripts/build.mjs",
                     "typecheck":  "tsc --noEmit",
-                    "test":  "vitest run"
+                    "test":  "vitest run",
+                    "check:encoding":  "node scripts/check-json-encoding.mjs"
                 },
     "devDependencies":  {
                             "@types/node":  "^24.10.0",
+                            "esbuild":  "0.25.12",
                             "tsx":  "^4.20.6",
                             "typescript":  "^5.9.3",
                             "vitest":  "^3.2.4"

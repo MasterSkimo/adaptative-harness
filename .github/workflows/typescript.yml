@@ -1,4 +1,4 @@
-﻿name: TypeScript validation
+name: TypeScript validation
 on:
   push:
     branches: [main]
@@ -6,11 +6,14 @@ on:
 jobs:
   typescript:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check JSON encoding
+        run: node scripts/check-json-encoding.mjs
       - uses: pnpm/action-setup@v4
         with:
           version: 10.20.0
@@ -19,5 +22,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test
