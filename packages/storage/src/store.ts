@@ -19,7 +19,9 @@ export function stable(value:unknown):string {
 const schemaDir = join(dirname(fileURLToPath(import.meta.url)),"../../../migrations");
 export class Store {
   readonly db: DatabaseSync;
-  constructor(readonly path:string){
+  readonly path:string;
+  constructor(path:string){
+    this.path=path;
     mkdirSync(dirname(path),{recursive:true,mode:0o700});
     this.db=new DatabaseSync(path);
     this.db.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;");

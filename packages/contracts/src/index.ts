@@ -3,7 +3,8 @@
  * independently of whether a provider SDK sanitizes its callbacks.
  */
 export class ContractError extends Error {
-  constructor(message: string, readonly status = 400) { super(message); }
+  readonly status:number;
+  constructor(message: string, status = 400) { super(message);this.status=status; }
 }
 const eventTypes = new Set(["session.started","session.ended","turn.started","turn.ended","tool.started","tool.completed","subagent.started","subagent.ended","message.corrected","provider.diagnostic"]);
 const outcomes = new Set(["succeeded","failed","cancelled","blocked","unknown"]);

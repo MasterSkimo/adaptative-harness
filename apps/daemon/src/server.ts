@@ -34,7 +34,9 @@ export class Daemon {
   private readonly secret:string;
   private readonly server:http.Server;
   private ticker:NodeJS.Timeout|undefined;
-  constructor(readonly root:string){
+  readonly root:string;
+  constructor(root:string){
+    this.root=root;
     prepare(root);this.secret=token(root);this.settings=loadSettings(root);
     this.store=new Store(join(root,"data","harness.sqlite"));
     this.worker=new Worker(this.store);

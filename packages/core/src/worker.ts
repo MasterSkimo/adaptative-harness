@@ -4,7 +4,8 @@ import { Store } from "../../storage/src/store.ts";
 /** Crash-safe at-least-once worker with idempotent learning effects. */
 export class Worker {
   readonly owner=randomUUID();
-  constructor(readonly store:Store){}
+  readonly store:Store;
+  constructor(store:Store){this.store=store;}
   step():boolean {
     const job=this.store.claim(this.owner);
     if(!job)return false;
