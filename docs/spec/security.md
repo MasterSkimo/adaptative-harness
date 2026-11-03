@@ -22,6 +22,14 @@ Text from repository/tool output must never be treated as instructions for the H
 - Project data is never sent to inference without per-project policy permitting the selected backend and data class.
 - Never log bearer tokens, provider account secrets, transport authorization or sensitive snippets.
 
+## Browser GUI authentication
+
+- Only the authenticated CLI can request a one-time UI pairing URL. The ticket is random 256-bit, expires after 60s and is consumed on first use.
+- Browser access uses a distinct in-memory two-hour `ah_ui` cookie with `HttpOnly; SameSite=Strict; Path=/ui`, never the daemon bearer. Cookies authorize read-only `/ui` routes only.
+- The GUI serves only bundled resources with CSP `default-src 'none'`, no-cache/no-referrer, and denies cross-origin requests. DOM content is rendered as text, not HTML.
+- The UI cannot call provider tools, mutate memories, promote releases or access arbitrary local paths. Restart invalidates all browser sessions.
+- Browser pairing tokens are short-lived but should not be logged or shared.
+
 ## Local server security
 
 - Listen only on 127.0.0.1 with a random ephemeral port.
