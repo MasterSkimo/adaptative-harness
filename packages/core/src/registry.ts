@@ -171,7 +171,8 @@ export class Registry {
     const older=this.store.get(`SELECT r.*,v.storage_path,v.content_digest FROM releases r
       JOIN artifact_versions v ON v.id=r.artifact_version_id WHERE r.id=?`,r.previous_release_id);
     const a=this.store.get("SELECT * FROM artifacts WHERE id=?",r.artifact_id);
-    const root=this.store.get("SELECT local_root_path FROM project_roots WHERE project_id=? ORDER BY verified_at LIMIT 1",a?.project_id)?.local_root_path;
+    if(!a)throw new Error("Artifact not found");
+    const root=this.store.get("SELECT local_root_path FROM project_roots WHERE project_id=? ORDER BY verified_at LIMIT 1",a.project_id)?.local_root_path;
     const target=root&&join(root,".opencode","skills","adaptive-"+a.logical_key,"SKILL.md");
     const active=this.store.get("SELECT content_digest FROM artifact_versions WHERE id=?",r.artifact_version_id);
     if(!older || !target || !active || !existsSync(target) || contentDigest(readFileSync(target,"utf8"))!==active.content_digest)throw new Error("Cannot rollback drifted target");
