@@ -23,5 +23,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Install TypeScript development dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Typecheck runtime packages
+        run: npm run check
       - name: TypeScript and SQLite runtime tests
-        run: node --experimental-strip-types --test tests/*.test.ts
+        run: npm test

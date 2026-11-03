@@ -2,7 +2,7 @@
 
 Provider-independent, local-first **learning and governance companion** for coding agents. The repository intentionally retains its published name `adaptative-harness`.
 
-> **Status: architecture/specification V1. No agent connector, daemon or learning workflow is implemented yet.**
+> **Status: initial OpenCode 2 implementation in progress.** Local collection, evidence-linked project memory, CLI, and guarded declarative registry are implemented; live OpenCode 2/T3 integration and release acceptance remain unverified. Auto-promotion is disabled unless an independent, isolated replay evaluator is supplied.
 
 ## Objective
 
@@ -32,11 +32,11 @@ Learn from Codex and OpenCode executions, retain evidence-backed memories, evalu
 - [Acceptance criteria](docs/testing/acceptance.md)
 - [Spike 0 runbook](docs/plan/spike-0-runbook.md) and [implementation backlog](docs/plan/backlog.md)
 
-## Proposed repository shape
+## Repository shape
 
 ```text
-apps/{daemon,cli}/                 # Implement in milestones, not present yet
-packages/{contracts,connectors,core,storage}/  # Implement after Spike 0
+apps/{daemon,cli}/                 # Node.js 24 local runtime and commands
+packages/{contracts,connectors,core,storage}/  # Contracts, native OpenCode 2 plugin, memory and registry
 docs/architecture/                # Component and sequence boundaries
 docs/api/                         # Local API contract
 docs/contracts/                   # Event/adapter contracts and fixtures
@@ -44,7 +44,7 @@ docs/adr/                         # ADRs, decisions and tradeoffs
 docs/spec/                        # Invariants, privacy, storage, lifecycle
 docs/testing/                     # Executable acceptance plan
 docs/plan/                        # Ordered milestones, spike and backlog
-migrations/                       # Initial SQLite schema (design artifact)
+migrations/                       # Versioned SQLite schema (0001–0003)
 ```
 
 ## V1 delivery sequence
@@ -56,6 +56,10 @@ Proceed with OpenCode-only implementation after the observed Windows CLI/T3 atta
 ## Current delivery priority
 
 **OpenCode 2.x is the sole V1 runtime target.** Spike 0 observed plugin callbacks and context injection in both direct CLI and T3-launched sessions on Windows. Codex App Server hook delivery under T3 remains unverified; defer its adapter and acceptance gate rather than patching T3 or bypassing hook trust. See [Windows evidence](docs/plan/spike-0-windows-evidence.md) and [ADR-0009](docs/adr/0009-opencode-first-release.md).
+
+## Running the implementation
+
+See [the runtime runbook](docs/operations/runtime.md) for commands, scope handling, testing, and release limitations.
 
 ## Initial technical decisions
 
