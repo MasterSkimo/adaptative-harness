@@ -1,0 +1,20 @@
+{
+  "name": "adaptive-harness",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "scripts": {
+    "start": "node --experimental-strip-types apps/cli/src/main.ts daemon start",
+    "cli": "node --experimental-strip-types apps/cli/src/main.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}
