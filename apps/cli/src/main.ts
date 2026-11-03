@@ -8,6 +8,7 @@ import { Daemon } from "../../daemon/src/server.ts";
 import { Store } from "../../../packages/storage/src/store.ts";
 import { atomicPrivate, prepare, readDiscovery, sourceId, stateRoot } from "../../../packages/core/src/config.ts";
 import { request } from "../../../packages/core/src/client.ts";
+import { Registry } from "../../../packages/core/src/registry.ts";
 
 const argv=process.argv.slice(2);
 const command=argv[0]||"help";
@@ -128,7 +129,15 @@ async function main(){
       if(argv[1]==="list"){
         const project=flag("project");if(!project)throw new Error("--project required");
         const s=store();try{info(s.all("SELECT id,kind,status,candidate_digest,created_at FROM proposals WHERE project_id=? ORDER BY created_at DESC LIMIT 100",project));}finally{s.close();}
-      }else throw new Error("Expected candidates list --project ID");
+      }else if(argv[1]==="propose"){
+        const project=flag("project"),kind=flag("kind"),key=flag("key"),path=flag("file"),evidence=flag("evidence");
+        if(!project||!path||!key||!evidence||(kind!=="skill"&&kind!=="rule"))throw new Error("Expected --project --kind skill|rule --key --file --evidence id1,id2");
+        const s=store();
+        try{info({proposalId:new Registry(s,root).propose({projectId:project,kind,logicalKey:key,
+          content:readFileSync(path,"utf8"),evidenceIds:evidence.split(",")})});}finally{s.close();}
+      }else if(argv[1]==="evaluate"&&argv[2]){
+        const s=store();try{info({evaluationId:await new Registry(s,root).evaluate(argv[2])});}finally{s.close();}
+      }else throw new Error("Expected candidates list|propose|evaluate");
       break;
     }
     case "evaluations":{
@@ -137,9 +146,15 @@ async function main(){
       break;
     }
     case "releases":{
-      if(argv[1]!=="list")throw new Error("Expected releases list --project ID");
-      const project=flag("project");if(!project)throw new Error("--project required");
-      info(await request("/v1/artifacts?projectId="+encodeURIComponent(project)));break;
+      if(argv[1]==="list"){
+        const project=flag("project");if(!project)throw new Error("--project required");
+        info(await request("/v1/artifacts?projectId="+encodeURIComponent(project)));
+      }else if(argv[1]==="publish"&&argv[2]){
+        const s=store();try{info({releaseId:new Registry(s,root).publish(argv[2])});}finally{s.close();}
+      }else if(argv[1]==="rollback"&&argv[2]){
+        const s=store();try{info({activeReleaseId:new Registry(s,root).rollback(argv[2])});}finally{s.close();}
+      }else throw new Error("Expected releases list|publish|rollback");
+      break;
     }
     default:info(`adaptive-harness commands:
   daemon start|stop
@@ -149,8 +164,12 @@ async function main(){
   status [--json]
   memory search --project ID QUERY
   candidates list --project ID
+  candidates propose --project ID --kind skill|rule --key KEY --file PATH --evidence ID1,ID2
+  candidates evaluate PROPOSAL_ID (inconclusive without isolated replay runner)
   evaluations show ID
-  releases list --project ID`);
+  releases list --project ID
+  releases publish PROPOSAL_ID
+  releases rollback RELEASE_ID`);
   }
 }
 void main().catch(error=>{console.error((error as Error).message);process.exitCode=1;});

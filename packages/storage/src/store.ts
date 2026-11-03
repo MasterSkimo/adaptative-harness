@@ -27,6 +27,7 @@ export class Store {
     this.db.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;");
     this.db.exec(readFileSync(join(schemaDir,"0001_init.sql"),"utf8"));
     this.db.exec(readFileSync(join(schemaDir,"0002_source_bindings.sql"),"utf8"));
+    this.db.exec(readFileSync(join(schemaDir,"0003_proposal_evidence.sql"),"utf8"));
   }
   close(){this.db.close();}
   txn<T>(fn:()=>T):T {
