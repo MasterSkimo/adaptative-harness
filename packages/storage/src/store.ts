@@ -17,10 +17,15 @@ export function stable(value:unknown):string {
   return JSON.stringify(value);
 }
 const schemaDir = join(dirname(fileURLToPath(import.meta.url)),"../../../migrations");
+export interface StoreOptions {retentionDays?:number;}
 export class Store {
   readonly db: DatabaseSync;
   readonly path:string;
-  constructor(path:string){
+  private readonly retentionDays:number;
+  constructor(path:string,options:StoreOptions={}){
+    const retention=options.retentionDays??30;
+    if(!Number.isInteger(retention)||retention<1||retention>3650)throw new Error("Invalid memory retention");
+    this.retentionDays=retention;
     this.path=path;
     mkdirSync(dirname(path),{recursive:true,mode:0o700});
     this.db=new DatabaseSync(path);
@@ -139,7 +144,7 @@ export class Store {
       VALUES(?,?,?,?,?,?,?)`,id,event.projectId,sequence,kind,sha(stable(event.metadata??{})),event.observedAt,t);
     return this.get("SELECT * FROM evidence WHERE id=?",id);
   }
-  /** Only an observed failure followed by success with a matching signature produces a published lesson. */
+  /** Only an observed failure followed by success with a matching signature produces a candidate lesson. */
   learn(sequence:number):boolean {
     return this.txn(()=>{
       const event=this.event(sequence);
@@ -165,18 +170,74 @@ export class Store {
       const description="Observed failure ("+(before.metadata?.errorCode??"unknown error")+") followed by a successful "+event.metadata.toolName+
         " invocation with a matching signature. This is observation evidence, not a verified remediation procedure.";
       const t=now();const artifactId=sha("artifact:"+key);const versionId=sha("version:"+key);
+      // Heuristic lessons start as candidates: a single observed recovery is
+      // never auto-published into executable or retrieved context.
+      const validUntil=new Date(Date.now()+this.retentionDays*86400000).toISOString();
       this.run("INSERT INTO artifacts(id,kind,logical_key,scope,project_id,created_at) VALUES(?,'memory',?,'project',?,?)",artifactId,key,event.projectId,t);
-      this.run("INSERT INTO artifact_versions(id,artifact_id,version_number,content_digest,storage_path,status,created_at) VALUES(?,?,1,?,?,'published',?)",
+      this.run("INSERT INTO artifact_versions(id,artifact_id,version_number,content_digest,storage_path,status,created_at) VALUES(?,?,1,?,?,'draft',?)",
         versionId,artifactId,sha(description),"memory:"+key,t);
       const proposalId=sha("proposal:"+key);
       this.run(`INSERT INTO proposals(id,project_id,target_artifact_id,proposed_scope,kind,idempotency_key,status,candidate_digest,staged_path,created_at,updated_at)
-        VALUES(?,?,?,'project','memory',?,'promoted',?,'memory',?,?)`,proposalId,event.projectId,artifactId,"lesson:"+key,sha(description),t,t);
-      this.run(`INSERT INTO memories(id,project_id,scope,kind,title,content,confidence,status,artifact_version_id,created_at,updated_at)
-        VALUES(?,?,'project','lesson',?,?,0.9,'published',?,?,?)`,key,event.projectId,title,description,versionId,t,t);
+        VALUES(?,?,?,'project','memory',?,'draft',?,'memory',?,?)`,proposalId,event.projectId,artifactId,"lesson:"+key,sha(description),t,t);
+      this.run(`INSERT INTO memories(id,project_id,scope,kind,title,content,confidence,status,artifact_version_id,valid_until,created_at,updated_at)
+        VALUES(?,?,'project','lesson',?,?,0.5,'candidate',?,?,?,?)`,key,event.projectId,title,description,versionId,validUntil,t,t);
       this.run("INSERT INTO memory_evidence(memory_id,evidence_id) VALUES(?,?),(?,?)",key,failure.evidence_id,key,evidence.id);
-      this.run("INSERT INTO releases(id,artifact_id,artifact_version_id,state,published_at,created_at) VALUES(?,?,?,'active',?,?)",sha("release:"+key),artifactId,versionId,t,t);
+      this.run(`INSERT INTO audit_log(project_id,actor_type,action,subject_type,subject_id,created_at)
+        VALUES(?,'learner','memory.candidate','memory',?,?)`,event.projectId,key,t);
       return true;
     });
+  }
+  /** Explicit, user-initiated promotion of a cited observational lesson. */
+  publishMemory(id:string){
+    return this.txn(()=>{
+      const memory=this.get("SELECT * FROM memories WHERE id=?",id);
+      if(!memory)throw new ContractError("Unknown memory",404);
+      if(memory.status==="published")return {memoryId:id,status:"published" as const};
+      if(memory.status!=="candidate")throw new ContractError("Memory is not a candidate");
+      if(memory.valid_until && memory.valid_until<=now())throw new ContractError("Memory retention expired");
+      const t=now();
+      this.run("UPDATE memories SET status='published',updated_at=? WHERE id=?",t,id);
+      const version=memory.artifact_version_id?this.get("SELECT * FROM artifact_versions WHERE id=?",memory.artifact_version_id):undefined;
+      if(version){
+        this.run("UPDATE artifact_versions SET status='published' WHERE id=? AND status='draft'",version.id);
+        this.run("UPDATE proposals SET status='promoted',updated_at=? WHERE target_artifact_id=? AND status='draft'",t,version.artifact_id);
+        const previous=this.get("SELECT id FROM releases WHERE artifact_id=? AND state='active'",version.artifact_id);
+        if(previous)this.run("UPDATE releases SET state='superseded' WHERE id=? AND state='active'",previous.id);
+        this.run(`INSERT INTO releases(id,artifact_id,artifact_version_id,previous_release_id,state,published_at,created_at)
+          VALUES(?,?,?,?,'active',?,?)`,randomUUID(),version.artifact_id,version.id,previous?.id??null,t,t);
+      }
+      this.run(`INSERT INTO audit_log(project_id,actor_type,action,subject_type,subject_id,created_at)
+        VALUES(?,'user','memory.published','memory',?,?)`,memory.project_id,id,t);
+      return {memoryId:id,status:"published" as const};
+    });
+  }
+  /** Archived lessons are never retrieved, even when their retention window is open. */
+  archiveMemory(id:string){
+    return this.txn(()=>{
+      const memory=this.get("SELECT * FROM memories WHERE id=?",id);
+      if(!memory)throw new ContractError("Unknown memory",404);
+      if(memory.status==="archived")return {memoryId:id,status:"archived" as const};
+      const t=now();
+      this.run("UPDATE memories SET status='archived',updated_at=? WHERE id=?",t,id);
+      if(memory.artifact_version_id){
+        this.run("UPDATE artifact_versions SET status='retired' WHERE id=? AND status='published'",memory.artifact_version_id);
+        this.run("UPDATE releases SET state='rolled_back' WHERE artifact_version_id=? AND state='active'",memory.artifact_version_id);
+      }
+      this.run(`INSERT INTO audit_log(project_id,actor_type,action,subject_type,subject_id,created_at)
+        VALUES(?,'user','memory.archived','memory',?,?)`,memory.project_id,id,t);
+      return {memoryId:id,status:"archived" as const};
+    });
+  }
+  listMemories(projectId:string,status?:string,limit=50){
+    if(!this.get("SELECT id FROM projects WHERE id=?",projectId))throw new ContractError("Unknown project",403);
+    if(status!==undefined && !["candidate","published","archived"].includes(status))throw new ContractError("Invalid memory status");
+    const size=Math.max(1,Math.min(100,limit));
+    const rows=status?
+      this.all(`SELECT id memoryId,kind,title,confidence,status,valid_until validUntil,created_at createdAt
+        FROM memories WHERE project_id=? AND status=? ORDER BY created_at DESC LIMIT ?`,projectId,status,size):
+      this.all(`SELECT id memoryId,kind,title,confidence,status,valid_until validUntil,created_at createdAt
+        FROM memories WHERE project_id=? ORDER BY created_at DESC LIMIT ?`,projectId,size);
+    return {items:rows};
   }
   search(request:ContextRequest,allowGlobal=false){
     this.assertAuthorized(request.sourceInstanceId,request.projectId,request.provider);

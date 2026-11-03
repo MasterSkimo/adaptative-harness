@@ -22,6 +22,6 @@
     "tests/*.test.ts"
   ],
   "exclude": [
-    "packages/connectors/opencode/plugin/**"
+    "packages/connectors/opencode-v2/**"
   ]
 }

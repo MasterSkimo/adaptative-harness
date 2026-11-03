@@ -1,11 +1,14 @@
 import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
-import { existsSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { Store } from "../../../packages/storage/src/store.ts";
 import { DashboardUi } from "./dashboard-ui.ts";
 import { Worker } from "../../../packages/core/src/worker.ts";
-import { atomicPrivate, loadSettings, prepare, token } from "../../../packages/core/src/config.ts";
+import {
+  acquireInstanceLock, atomicPrivate, loadSettings, prepare, releaseInstanceLock, rootFingerprint, token,
+  type InstanceLock
+} from "../../../packages/core/src/config.ts";
 import { ContractError, parseContext, parseEvent, sanitizeEvent } from "../../../packages/contracts/src/index.ts";
 
 const json=(res:http.ServerResponse,status:number,data:unknown)=>{
@@ -35,11 +38,18 @@ export class Daemon {
   private readonly secret:string;
   private readonly server:http.Server;
   private ticker:NodeJS.Timeout|undefined;
+  private lock:InstanceLock|undefined;
+  private started=false;
+  private tickerBusy=false;
+  private stopping:Promise<void>|undefined;
+  private readonly stopped:Promise<void>;
+  private resolveStopped:()=>void=()=>{};
   readonly root:string;
   constructor(root:string){
     this.root=root;
     prepare(root);this.secret=token(root);this.settings=loadSettings(root);
-    this.store=new Store(join(root,"data","harness.sqlite"));
+    this.stopped=new Promise<void>(resolve=>{this.resolveStopped=resolve;});
+    this.store=new Store(join(root,"data","harness.sqlite"),{retentionDays:this.settings.memory.retentionDays});
     this.worker=new Worker(this.store);
     this.ui=new DashboardUi(this.store);
     this.server=http.createServer((req,res)=>void this.handle(req,res));
@@ -57,6 +67,12 @@ export class Daemon {
       // Browser sessions grant access only to the read-only /ui namespace.
       if(this.ui.handle(req,res,url))return;
       if(!authenticated(req.headers.authorization,this.secret))return json(res,401,{code:"UNAUTHORIZED",message:"Bearer token required"});
+      if(req.method==="POST" && url.pathname==="/v1/daemon/stop"){
+        // Authenticated shutdown: never signal an arbitrary PID recorded on disk.
+        // Answer only once the acknowledgement is flushed, then stop.
+        res.once("finish",()=>setImmediate(()=>void this.stop()));
+        return json(res,202,{status:"stopping"});
+      }
       if(req.method==="POST" && url.pathname==="/v1/ui/pair"){
         const address=this.server.address();
         if(!address || typeof address==="string")throw new ContractError("Daemon not listening",503);
@@ -92,23 +108,74 @@ export class Daemon {
     }
   }
   async start():Promise<number>{
-    await new Promise<void>((ok,fail)=>{
-      this.server.once("error",fail);
-      this.server.listen(this.settings.transport.port,"127.0.0.1",()=>{this.server.off("error",fail);ok();});
-    });
+    if(this.started)throw new Error("Daemon already started");
+    if(this.stopping)throw new Error("Daemon is shutting down");
+    // One live instance per state root; a stale lock from a dead process is replaced.
+    const lockPath=join(this.root,"runtime","daemon.lock");
+    const lock=acquireInstanceLock(lockPath);
+    try{
+      await new Promise<void>((ok,fail)=>{
+        this.server.once("error",fail);
+        this.server.listen(this.settings.transport.port,"127.0.0.1",()=>{this.server.off("error",fail);ok();});
+      });
+    }catch(error){
+      releaseInstanceLock(lockPath,lock.instanceId);
+      throw error;
+    }
     const address=this.server.address();
-    if(!address || typeof address==="string")throw new Error("Unexpected listener");
-    atomicPrivate(join(this.root,"runtime","discovery.json"),JSON.stringify({protocolVersion:1,port:address.port,pid:process.pid}));
-    this.ticker=setInterval(()=>{this.worker.drain(100);},250);
+    if(!address || typeof address==="string"){
+      releaseInstanceLock(lockPath,lock.instanceId);
+      throw new Error("Unexpected listener");
+    }
+    this.lock=lock;this.started=true;
+    atomicPrivate(join(this.root,"runtime","discovery.json"),JSON.stringify({
+      protocolVersion:1,port:address.port,pid:process.pid,
+      instanceId:lock.instanceId,rootFingerprint:rootFingerprint(this.root)
+    }));
+    this.tick();
+    this.ticker=setInterval(()=>this.tick(),250);
     this.ticker.unref();
     return address.port;
   }
-  async stop(){
-    if(this.ticker)clearInterval(this.ticker);
+  /** A single ticker loop: slow storage work must not overlap or kill the daemon. */
+  private tick(){
+    if(this.tickerBusy || this.stopping)return;
+    this.tickerBusy=true;
+    try{this.worker.drain(100);}
+    catch{/* transient SQLite contention is retried on the next tick */}
+    finally{this.tickerBusy=false;}
+  }
+  /** Idempotent shutdown, safe to call from a signal, the stop endpoint or a test. */
+  stop():Promise<void>{
+    if(!this.stopping)this.stopping=this.shutdown();
+    return this.stopping;
+  }
+  waitForStop():Promise<void>{return this.stopped;}
+  private async shutdown():Promise<void>{
+    if(this.ticker){clearInterval(this.ticker);this.ticker=undefined;}
     this.ui.close();
-    await new Promise<void>((resolve,reject)=>this.server.close(e=>e?reject(e):resolve()));
-    const path=join(this.root,"runtime","discovery.json");
-    if(existsSync(path))unlinkSync(path);
-    this.store.close();
+    if(this.started){
+      this.started=false;
+      this.server.closeIdleConnections();
+      await new Promise<void>(resolve=>{
+        const force=setTimeout(()=>{this.server.closeAllConnections();resolve();},2000);
+        force.unref();
+        this.server.close(()=>{clearTimeout(force);resolve();});
+      });
+      const path=join(this.root,"runtime","discovery.json");
+      try{
+        if(existsSync(path)){
+          const discovery=JSON.parse(readFileSync(path,"utf8")) as {pid?:number;instanceId?:string};
+          // Only remove the discovery record this process published.
+          if(discovery.pid===process.pid || discovery.instanceId===this.lock?.instanceId)unlinkSync(path);
+        }
+      }catch{}
+    }
+    if(this.lock){
+      releaseInstanceLock(join(this.root,"runtime","daemon.lock"),this.lock.instanceId);
+      this.lock=undefined;
+    }
+    try{this.store.close();}catch{}
+    this.resolveStopped();
   }
 }

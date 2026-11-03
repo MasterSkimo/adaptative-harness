@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store, sha } from "../packages/storage/src/store.ts";
@@ -65,6 +65,73 @@ test("missing or unverifiable replay is inconclusive and cannot publish",async()
     assert.equal(f.db.get("SELECT status FROM evaluations WHERE id=?",e)?.status,"inconclusive");
     assert.throws(()=>registry.publish(id),/Not eligible/);
     assert.equal(f.db.get("SELECT COUNT(*) n FROM releases")?.n,0);
+  }finally{f.cleanup();}
+});
+test("candidate safety rejects secrets, private paths and homoglyphs",()=>{
+  const f=fixture();
+  try{
+    const registry=new Registry(f.db,f.dir,replay);
+    const propose=(body:string)=>registry.propose({projectId:f.project,kind:"skill",logicalKey:"observe-repair",
+      content:skill(body),evidenceIds:["failure","success"]});
+    assert.throws(()=>propose("Use token ghp_"+"a".repeat(30)+" to fetch the fix."),/secret/);
+    assert.throws(()=>propose("Call the API with sk-ant-"+"b".repeat(24)+" and retry."),/secret/);
+    assert.throws(()=>propose("Send Authorization: Bearer "+"c".repeat(32)+" when retrying."),/secret/);
+    assert.throws(()=>propose("Read C:/Users/alice/notes.txt before retrying."),/private_path/);
+    assert.throws(()=>propose("Inspect /home/alice/repo/config before retrying."),/private_path/);
+    assert.throws(()=>propose("Use $HOME/.ssh/id_ed25519 for the check."),/private_path/);
+    assert.throws(()=>propose("Use ｓｋ-"+"d".repeat(24)+" to authenticate the retry."),/secret/);
+    assert.ok(propose("Verify the exit status and the source test before claiming a repair."));
+  }finally{f.cleanup();}
+});
+test("interrupted publication resumes its staged release instead of duplicating",async()=>{
+  const f=fixture();
+  try{
+    const registry=new Registry(f.db,f.dir,replay);
+    const input={projectId:f.project,kind:"skill" as const,logicalKey:"observe-repair",content:""};
+    const first=registry.propose({...input,content:skill("Verify command exit status and source tests before claiming repair."),
+      evidenceIds:["failure","success"]});
+    await registry.evaluate(first);
+    registry.publish(first);
+    const secondContent=skill("Cite the failing command and the verified recovery before publishing.");
+    const second=registry.propose({...input,content:secondContent,evidenceIds:["failure","success"]});
+    await registry.evaluate(second);
+    const release=registry.publish(second);
+    const target=join(f.dir,"project",".opencode","skills","adaptive-observe-repair","SKILL.md");
+    // Simulate a crash after the reserved version but before activation.
+    const version=f.db.get("SELECT artifact_version_id vid FROM releases WHERE id=?",release)!.vid;
+    f.db.run("UPDATE releases SET state='staged',published_at=NULL WHERE id=?",release);
+    f.db.run("UPDATE artifact_versions SET status='draft' WHERE id=?",version);
+    f.db.run("UPDATE publication_targets SET status='planned',installed_digest=NULL,applied_at=NULL WHERE release_id=?",release);
+    f.db.run("UPDATE proposals SET status='eligible' WHERE id=?",second);
+    writeFileSync(target,skill("Verify command exit status and source tests before claiming repair."));
+    assert.equal(registry.publish(second),release);
+    assert.equal(readFileSync(target,"utf8"),secondContent);
+    assert.equal(f.db.get("SELECT COUNT(*) n FROM releases WHERE state='active'")?.n,1);
+    assert.equal(f.db.get("SELECT status FROM artifact_versions WHERE id=?",version)?.status,"published");
+    assert.equal(f.db.get("SELECT status FROM proposals WHERE id=?",second)?.status,"promoted");
+  }finally{f.cleanup();}
+});
+test("rollback resumes after a filesystem-only crash and is idempotent",async()=>{
+  const f=fixture();
+  try{
+    const registry=new Registry(f.db,f.dir,replay);
+    const input={projectId:f.project,kind:"skill" as const,logicalKey:"observe-repair",content:""};
+    const firstContent=skill("Verify command exit status and source tests before claiming repair.");
+    const first=registry.propose({...input,content:firstContent,evidenceIds:["failure","success"]});
+    await registry.evaluate(first);
+    const r1=registry.publish(first);
+    const secondContent=skill("Cite the failing command and the verified recovery before publishing.");
+    const second=registry.propose({...input,content:secondContent,evidenceIds:["failure","success"]});
+    await registry.evaluate(second);
+    const r2=registry.publish(second);
+    const target=join(f.dir,"project",".opencode","skills","adaptive-observe-repair","SKILL.md");
+    // Simulate a crash between the atomic target replacement and the database transition.
+    writeFileSync(target,firstContent);
+    assert.equal(registry.rollback(r2),r1);
+    assert.equal(readFileSync(target,"utf8"),firstContent);
+    assert.equal(f.db.get("SELECT COUNT(*) n FROM releases WHERE state='active'")?.n,1);
+    // A repeated rollback of the same release is a no-op, not drift.
+    assert.equal(registry.rollback(r2),r1);
   }finally{f.cleanup();}
 });
 test("loop detector signals repeated unchanged failures; editing resets count",()=>{

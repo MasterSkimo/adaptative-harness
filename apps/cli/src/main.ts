@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { Daemon } from "../../daemon/src/server.ts";
 import { Store } from "../../../packages/storage/src/store.ts";
-import { atomicPrivate, prepare, readDiscovery, sourceId, stateRoot } from "../../../packages/core/src/config.ts";
+import {
+  atomicPrivate, clearStaleInstanceLock, isProcessAlive, loadSettings, prepare, readDiscovery, sourceId, stateRoot
+} from "../../../packages/core/src/config.ts";
 import { request } from "../../../packages/core/src/client.ts";
 import { Registry } from "../../../packages/core/src/registry.ts";
 
@@ -20,7 +22,7 @@ const fileHash=(v:string)=>createHash("sha256").update(v).digest("hex");
 const mapping=join(root,"runtime","projects.json");
 const dbPath=join(root,"data","harness.sqlite");
 const pluginSource=new URL("../../../packages/connectors/opencode/plugin/index.ts",import.meta.url);
-function store(){return new Store(dbPath);}
+function store(){return new Store(dbPath,{retentionDays:loadSettings(root).memory.retentionDays});}
 function ensureProvider(){
   const provider=flag("provider")||"opencode";
   if(provider!=="opencode")throw new Error("Codex connector deferred by ADR-0009");
@@ -100,14 +102,29 @@ async function main(){
         const daemon=new Daemon(root);
         const port=await daemon.start();
         info({status:"started",protocolVersion:1,port});
-        let closing=false;
-        const stop=()=>{if(closing)return;closing=true;void daemon.stop().then(()=>process.exit(0));};
+        // Shutdown is requested through the authenticated endpoint or an OS signal.
+        const stop=()=>{void daemon.stop().then(()=>process.exit(0),()=>process.exit(1));};
         process.once("SIGINT",stop);process.once("SIGTERM",stop);
+        await daemon.waitForStop();
       }else if(argv[1]==="stop"){
         const state=readDiscovery(root);
         if(!state)throw new Error("No running daemon");
-        process.kill(state.pid,"SIGTERM");
-        info({status:"stop-requested",pid:state.pid});
+        try{
+          await request("/v1/daemon/stop","POST",{},root,2000);
+        }catch(error){
+          // Never signal a PID from disk: only clean up state whose owner is gone.
+          if(!isProcessAlive(state.pid)){
+            const discovery=join(root,"runtime","discovery.json");
+            clearStaleInstanceLock(join(root,"runtime","daemon.lock"));
+            if(existsSync(discovery))unlinkSync(discovery);
+            info({status:"stale-state-removed",pid:state.pid});
+            break;
+          }
+          throw error;
+        }
+        const deadline=Date.now()+5000;
+        while(readDiscovery(root) && Date.now()<deadline)await new Promise(done=>setTimeout(done,50));
+        info({status:readDiscovery(root)?"stop-requested":"stopped",pid:state.pid});
       }else throw new Error("Expected daemon start|stop");
       break;
     }
@@ -131,13 +148,23 @@ async function main(){
       info(status);break;
     }
     case "memory":{
-      if(argv[1]!=="search")throw new Error("Expected memory search");
-      const project=flag("project"),query=argv.slice(argv.indexOf("search")+1).filter(x=>!x.startsWith("--")&&x!==project).join(" ");
-      if(!project || !query)throw new Error("Expected --project ID and QUERY");
-      const result=await request("/v1/context/resolve","POST",{schemaVersion:1,provider:"opencode",
-        sourceInstanceId:sourceId(root),projectId:project,nativeSessionId:"cli-search",
-        query,maxItems:5,maxTokens:600},root,1000);
-      info(result);break;
+      if(argv[1]==="search"){
+        const project=flag("project"),query=argv.slice(argv.indexOf("search")+1).filter(x=>!x.startsWith("--")&&x!==project).join(" ");
+        if(!project || !query)throw new Error("Expected --project ID and QUERY");
+        const result=await request("/v1/context/resolve","POST",{schemaVersion:1,provider:"opencode",
+          sourceInstanceId:sourceId(root),projectId:project,nativeSessionId:"cli-search",
+          query,maxItems:5,maxTokens:600},root,1000);
+        info(result);
+      }else if(argv[1]==="list"){
+        const project=flag("project"),status=flag("status");
+        if(!project)throw new Error("--project required");
+        const s=store();try{info(s.listMemories(project,status,Number(flag("limit")||50)));}finally{s.close();}
+      }else if(argv[1]==="publish"&&argv[2]){
+        const s=store();try{info(s.publishMemory(argv[2]));}finally{s.close();}
+      }else if(argv[1]==="archive"&&argv[2]){
+        const s=store();try{info(s.archiveMemory(argv[2]));}finally{s.close();}
+      }else throw new Error("Expected memory search|list|publish|archive");
+      break;
     }
     case "candidates":{
       if(argv[1]==="list"){
@@ -178,6 +205,9 @@ async function main(){
   doctor --provider opencode --launcher cli|t3 [--json]
   status [--json]
   memory search --project ID QUERY
+  memory list --project ID [--status candidate|published|archived] [--limit N]
+  memory publish MEMORY_ID
+  memory archive MEMORY_ID
   candidates list --project ID
   candidates propose --project ID --kind skill|rule --key KEY --file PATH --evidence ID1,ID2
   candidates evaluate PROPOSAL_ID (inconclusive without isolated replay runner)

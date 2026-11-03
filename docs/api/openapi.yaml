@@ -3,8 +3,9 @@ info:
   title: Adaptive Harness Local API
   version: 1.0.0-draft
   description: |
-    Proposed local API. No daemon is implemented. All data endpoints require a
-    user-private bearer token. Server must bind only to 127.0.0.1.
+    Local API implemented by `apps/daemon`. All data endpoints require a
+    user-private bearer token. The server binds only to 127.0.0.1 and rejects
+    browser-originated requests. `/health` exposes no user data.
 servers:
   - url: http://127.0.0.1:{port}
     variables:
@@ -130,6 +131,27 @@ paths:
                 properties:
                   status: { type: string, enum: [ok, degraded] }
                   protocolVersion: { type: integer, const: 1 }
+  /v1/daemon/stop:
+    post:
+      tags: [runtime]
+      summary: Authenticated graceful shutdown
+      description: |
+        Bearer-authenticated. The daemon acknowledges with 202, releases its
+        instance lock, removes its own discovery record and closes the store.
+        Clients never signal a PID read from disk.
+      responses:
+        "202":
+          description: Shutdown accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status: { type: string, const: stopping }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /v1/events:
     post:
       tags: [ingestion]

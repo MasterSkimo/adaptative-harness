@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { Store, sha } from "../../storage/src/store.ts";
@@ -25,9 +25,35 @@ export interface ReplayPort {
 function safety(content:string,kind:Kind,key:string):string|undefined {
   if(!/^[a-z][a-z0-9-]{1,62}$/.test(key))return "invalid_logical_key";
   if(content.length<20 || content.length>32768)return "invalid_content_size";
-  if(/(?:-----BEGIN .*PRIVATE KEY-----|ghp_[A-Za-z0-9]{16}|sk-[A-Za-z0-9]{16}|\$\{\s*(?:TOKEN|SECRET|API_KEY)|https?:\/\/[^\s]+@)/i.test(content))return "secret_detected";
-  if(/(?:<script|<\|im_start\|>|ignore (?:all|previous) instructions|curl\s+[^\n]*\|\s*(?:bash|sh)|wget\s+[^\n]*\|\s*(?:bash|sh))/i.test(content))return "injection_or_script";
-  if(/(?:[A-Z]:\\Users\\|\/home\/[^/\s]+\/|\/Users\/[^/\s]+\/)/.test(content))return "private_path_detected";
+  // Normalize before matching so full-width or zero-width tricks cannot hide credentials or paths.
+  const text=content.normalize("NFKC").replace(/[\u200B-\u200D\uFEFF\u2060]/g,"");
+  if(/(?:<script|<\|im_start\|>|ignore (?:all|previous) instructions|curl\s+[^\n]*\|\s*(?:bash|sh)|wget\s+[^\n]*\|\s*(?:bash|sh))/i.test(text))return "injection_or_script";
+  const secrets:[RegExp,string][]=[
+    [/-----BEGIN [A-Z ]*PRIVATE KEY-----/i,"private_key"],
+    [/\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/,"github_token"],
+    [/\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}\b/,"api_key"],
+    [/\bxox[abposr]-[A-Za-z0-9-]{10,}\b/,"slack_token"],
+    [/\bAKIA[0-9A-Z]{12,}\b/,"aws_key"],
+    [/\bAIza[0-9A-Za-z_-]{30,}\b/,"google_key"],
+    [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,"jwt"],
+    [/\b(?:api[_-]?key|client[_-]?secret|password|passwd|access[_-]?token|auth[_-]?token)\b\s*[:=]\s*["']?[A-Za-z0-9_./+=-]{12,}/i,"credential_assignment"],
+    [/\bauthorization\s*:\s*(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{12,}/i,"authorization_header"],
+    [/https?:\/\/[^\s/:@]+:[^\s/@]+@/i,"url_credentials"],
+    [/\$\{\s*[A-Z_]*(?:TOKEN|SECRET|API_KEY|PASSWORD)[A-Z_]*\s*\}?/i,"env_reference"]
+  ];
+  for(const [pattern,name] of secrets)if(pattern.test(text))return "secret_detected:"+name;
+  const paths:[RegExp,string][]=[
+    [/\b[A-Za-z]:[\\/]+(?:Users|Documents and Settings)\b/i,"windows_profile"],
+    [/\b[A-Za-z]:[\\/]+[^\\/\r\n]+[\\/]+AppData\b/i,"windows_appdata"],
+    [/(?:^|[\s"'(])[\\/]{2}[^\\/\s]+[\\/]+[^\\/\s]+[\\/]+(?:Users|home)[\\/]/i,"unc_profile"],
+    [/(?:^|[\s"'(])[\\/](?:home|Users)[\\/]+[^\\/\s]+/i,"posix_profile"],
+    [/(?:^|[\s"'(])[\\/]root[\\/]/i,"root_home"],
+    [/(?:^|[\s"'(])[\\/](?:private[\\/]var[\\/]folders|var[\\/]folders)[\\/]/i,"macos_temp_profile"],
+    [/\b(?:file|vscode-file):\/\/\//i,"file_url"],
+    [/(?:\$HOME|%USERPROFILE%)[\\/]/i,"env_profile"],
+    [/~\/(?:\.ssh|\.aws|\.config|\.gnupg)[\\/]/i,"secret_config_dir"]
+  ];
+  for(const [pattern,name] of paths)if(pattern.test(text))return "private_path_detected:"+name;
   if(kind==="skill" && !/^---\r?\n[\s\S]*?\r?\n---\r?\n/.test(content))return "invalid_skill_frontmatter";
   if(kind==="skill" && !/^name:\s*[\w-]+\s*$/m.test(content))return "missing_skill_name";
   return undefined;
@@ -83,8 +109,8 @@ export class Registry {
     if(!proposal || !["draft","evaluating"].includes(proposal.status))throw new Error("Proposal not evaluable");
     const evidence=this.store.all("SELECT evidence_id FROM proposal_evidence WHERE proposal_id=?",id).map(x=>x.evidence_id as string);
     const content=readFileSync(proposal.staged_path,"utf8");
-    const valid=contentDigest(content)===proposal.candidate_digest&&!safety(content,proposal.kind,proposal.kind==="skill"?
-      (this.store.get("SELECT logical_key FROM artifacts WHERE id=?",proposal.target_artifact_id)?.logical_key||""):this.store.get("SELECT logical_key FROM artifacts WHERE id=?",proposal.target_artifact_id)?.logical_key||"");
+    const logicalKey=this.store.get("SELECT logical_key FROM artifacts WHERE id=?",proposal.target_artifact_id)?.logical_key??"";
+    const valid=contentDigest(content)===proposal.candidate_digest&&!safety(content,proposal.kind as Kind,logicalKey);
     const evaluationId=randomUUID(),t=stamp();
     this.store.txn(()=>{
       this.store.run("UPDATE proposals SET status='evaluating',updated_at=? WHERE id=? AND status='draft'",t,id);
@@ -117,7 +143,11 @@ export class Registry {
     });
     return evaluationId;
   }
-  /** Publish a managed skill only, after a reproduced improvement and zero regressions. */
+  /**
+   * Publish in two phases: reserve an immutable version and a staged release in
+   * SQLite, then write files, then activate. Failures restore the previous
+   * bytes and leave no release active, so a retry or rollback stays possible.
+   */
   publish(id:string):string{
     const p=this.store.get("SELECT * FROM proposals WHERE id=?",id);
     if(!p || p.status!=="eligible" || p.proposed_scope!=="project" || p.kind!=="skill")throw new Error("Not eligible for native publication");
@@ -131,60 +161,144 @@ export class Registry {
     const target=join(root,".opencode","skills","adaptive-"+a.logical_key,"SKILL.md");
     const prev=this.store.get(`SELECT r.*,v.content_digest FROM releases r JOIN artifact_versions v ON v.id=r.artifact_version_id
       WHERE r.artifact_id=? AND r.state='active'`,a.id);
-    const current=existsSync(target)?contentDigest(readFileSync(target,"utf8")):null;
-    if(current && (!prev || current!==prev.content_digest))throw new Error("Managed target drifted; refusing overwrite");
-    const number=Number(this.store.get("SELECT COALESCE(MAX(version_number),0) n FROM artifact_versions WHERE artifact_id=?",a.id)?.n)+1;
-    const versionId=randomUUID(),releaseId=randomUUID(),t=stamp();
-    const versionFile=join(this.root,"artifacts","versions",a.id,String(number),"SKILL.md");
-    atomicPrivate(versionFile,source);
-    // Git only runs inside Harness-owned history; never in a user project.
-    const history=join(this.root,"artifacts","history");
-    mkdirSync(history,{recursive:true,mode:0o700});
-    const cmd=(...args:string[])=>spawnSync("git",args,{cwd:history,encoding:"utf8",timeout:3000});
-    if(!existsSync(join(history,".git")) && cmd("init").status!==0)throw new Error("Local Git required for publication");
-    const tracked=join(history,versionId+".md");
-    atomicPrivate(tracked,source);
-    if(cmd("add",versionId+".md").status!==0)throw new Error("Git staging failed");
-    const commit=cmd("-c","user.name=Adaptive Harness","-c","user.email=harness@localhost","commit","-m","publish "+versionId);
-    if(commit.status!==0)throw new Error("Git revision failed");
-    const revision=cmd("rev-parse","HEAD").stdout.trim();
-    // The prepared bytes are already immutable; atomic replacement is limited to our managed path.
-    atomicPrivate(target+".next-"+releaseId,source);
-    renameSync(target+".next-"+releaseId,target);
-    this.store.txn(()=>{
-      this.store.run(`INSERT INTO artifact_versions(id,artifact_id,source_proposal_id,version_number,content_digest,storage_path,status,created_at)
-        VALUES(?,?,?,?,?,?,'published',?)`,versionId,a.id,id,number,p.candidate_digest,versionFile,t);
-      if(prev)this.store.run("UPDATE releases SET state='superseded' WHERE id=? AND state='active'",prev.id);
-      this.store.run(`INSERT INTO releases(id,artifact_id,artifact_version_id,previous_release_id,state,git_revision,published_at,created_at)
-        VALUES(?,?,?,?, 'active',?,?,?)`,releaseId,a.id,versionId,prev?.id??null,revision,t,t);
-      this.store.run(`INSERT INTO publication_targets(id,release_id,provider,install_scope,target_fingerprint,installed_digest,status,applied_at)
-        VALUES(?,?,'opencode','project',?,?,'installed',?)`,randomUUID(),releaseId,sha(target),p.candidate_digest,t);
-      this.store.run("UPDATE proposals SET status='promoted',updated_at=? WHERE id=?",t,id);
-      this.audit(p.project_id,"release.active",id);
-    });
+    const staged=this.store.get(`SELECT r.id release_id,r.git_revision,v.id version_id,v.storage_path,v.version_number,v.content_digest
+      FROM releases r JOIN artifact_versions v ON v.id=r.artifact_version_id
+      WHERE v.source_proposal_id=? AND r.state='staged' ORDER BY r.created_at DESC LIMIT 1`,id);
+    if(staged && staged.content_digest!==p.candidate_digest)throw new Error("Staged publication drift");
+    if(!staged){
+      const current=existsSync(target)?contentDigest(readFileSync(target,"utf8")):null;
+      if(current && (!prev || current!==prev.content_digest))throw new Error("Managed target drifted; refusing overwrite");
+      const busy=this.store.get(`SELECT r.id FROM releases r JOIN artifact_versions v ON v.id=r.artifact_version_id
+        WHERE r.artifact_id=? AND r.state='staged' AND v.source_proposal_id<>?`,a.id,id);
+      if(busy)throw new Error("Another publication is in progress");
+    }
+    const t=stamp();
+    let releaseId:string,versionId:string;
+    if(staged){
+      releaseId=staged.release_id as string;versionId=staged.version_id as string;
+    }else{
+      const number=Number(this.store.get("SELECT COALESCE(MAX(version_number),0) n FROM artifact_versions WHERE artifact_id=?",a.id)?.n)+1;
+      releaseId=randomUUID();versionId=randomUUID();
+      const versionFile=join(this.root,"artifacts","versions",a.id,String(number),"SKILL.md");
+      this.store.txn(()=>{
+        // Re-check inside the write transaction: reservation is the serialization point.
+        if(this.store.get("SELECT id FROM releases WHERE artifact_id=? AND state='staged'",a.id))throw new Error("Another publication is in progress");
+        this.store.run(`INSERT INTO artifact_versions(id,artifact_id,source_proposal_id,version_number,content_digest,storage_path,status,created_at)
+          VALUES(?,?,?,?,?,?,'draft',?)`,versionId,a.id,id,number,p.candidate_digest,versionFile,t);
+        this.store.run(`INSERT INTO releases(id,artifact_id,artifact_version_id,previous_release_id,state,created_at)
+          VALUES(?,?,?,?,'staged',?)`,releaseId,a.id,versionId,prev?.id??null,t);
+        this.store.run(`INSERT INTO publication_targets(id,release_id,provider,install_scope,target_fingerprint,status)
+          VALUES(?,?,'opencode','project',?,'planned')`,randomUUID(),releaseId,sha(target));
+      });
+    }
+    const versionFile=this.store.get("SELECT storage_path FROM artifact_versions WHERE id=?",versionId)!.storage_path as string;
+    let wroteTarget=false;
+    try{
+      if(!existsSync(versionFile) || contentDigest(readFileSync(versionFile,"utf8"))!==p.candidate_digest)atomicPrivate(versionFile,source);
+      // Git only runs inside Harness-owned history; never in a user project.
+      const history=join(this.root,"artifacts","history");
+      mkdirSync(history,{recursive:true,mode:0o700});
+      const cmd=(...args:string[])=>spawnSync("git",args,{cwd:history,encoding:"utf8",timeout:3000});
+      if(!existsSync(join(history,".git")) && cmd("init").status!==0)throw new Error("Local Git required for publication");
+      const name=versionId+".md";
+      const tracked=join(history,name);
+      let revision:string|undefined;
+      // A resumed publication reuses the commit that already contains these bytes.
+      if(cmd("cat-file","-e","HEAD:"+name).status===0){
+        const committed=cmd("show","HEAD:"+name);
+        if(committed.status===0 && contentDigest(committed.stdout)===p.candidate_digest)revision=cmd("rev-parse","HEAD").stdout.trim();
+      }
+      if(!revision){
+        if(!existsSync(tracked) || contentDigest(readFileSync(tracked,"utf8"))!==p.candidate_digest)atomicPrivate(tracked,source);
+        if(cmd("add",name).status!==0)throw new Error("Git staging failed");
+        const commit=cmd("-c","user.name=Adaptive Harness","-c","user.email=harness@localhost","commit","-m","publish "+versionId);
+        if(commit.status!==0)throw new Error("Git revision failed");
+        revision=cmd("rev-parse","HEAD").stdout.trim();
+      }
+      this.store.run("UPDATE releases SET git_revision=? WHERE id=? AND state='staged'",revision,releaseId);
+      // The prepared bytes are already immutable; atomic replacement is limited to our managed path.
+      atomicPrivate(target+".next-"+releaseId,source);
+      renameSync(target+".next-"+releaseId,target);
+      wroteTarget=true;
+      this.store.txn(()=>{
+        this.store.run("UPDATE releases SET state='superseded' WHERE artifact_id=? AND state='active'",a.id);
+        const activated=this.store.run("UPDATE releases SET state='active',published_at=? WHERE id=? AND state='staged'",t,releaseId);
+        if(Number(activated.changes)!==1)throw new Error("Publication state changed");
+        this.store.run("UPDATE artifact_versions SET status='published' WHERE id=? AND status='draft'",versionId);
+        this.store.run("UPDATE publication_targets SET status='installed',installed_digest=?,applied_at=? WHERE release_id=? AND status='planned'",p.candidate_digest,t,releaseId);
+        this.store.run("UPDATE proposals SET status='promoted',updated_at=? WHERE id=? AND status='eligible'",t,id);
+        this.audit(p.project_id,"release.active",id);
+      });
+    }catch(error){
+      // Never leave self-inflicted drift: put the previous verified bytes back.
+      if(wroteTarget||existsSync(target+".next-"+releaseId)){
+        try{
+          if(prev){
+            const older=this.store.get("SELECT storage_path,content_digest FROM artifact_versions WHERE id=?",prev.artifact_version_id);
+            const body=older&&existsSync(older.storage_path)?readFileSync(older.storage_path,"utf8"):undefined;
+            if(older&&body!==undefined && contentDigest(body)===older.content_digest){
+              atomicPrivate(target+".restore-"+releaseId,body);renameSync(target+".restore-"+releaseId,target);
+            }
+          }else if(existsSync(target))unlinkSync(target);
+        }catch{}
+        try{unlinkSync(target+".next-"+releaseId);}catch{}
+      }
+      this.store.txn(()=>{
+        this.store.run("UPDATE releases SET state='failed' WHERE id=? AND state='staged'",releaseId);
+        this.store.run("UPDATE artifact_versions SET status='retired' WHERE id=? AND status='draft'",versionId);
+        this.store.run("UPDATE publication_targets SET status='failed' WHERE release_id=? AND status='planned'",releaseId);
+      });
+      throw error;
+    }
     return releaseId;
   }
   /** Restore the previous verified version, never reset the project Git working copy. */
   rollback(id:string):string{
-    const r=this.store.get("SELECT * FROM releases WHERE id=? AND state='active'",id);
-    if(!r || !r.previous_release_id)throw new Error("No rollback target");
+    const r=this.store.get("SELECT * FROM releases WHERE id=?",id);
+    if(!r || !r.previous_release_id || (r.state!=="active" && r.state!=="rolled_back"))throw new Error("No rollback target");
     const older=this.store.get(`SELECT r.*,v.storage_path,v.content_digest FROM releases r
       JOIN artifact_versions v ON v.id=r.artifact_version_id WHERE r.id=?`,r.previous_release_id);
     const a=this.store.get("SELECT * FROM artifacts WHERE id=?",r.artifact_id);
     if(!a)throw new Error("Artifact not found");
     const root=this.store.get("SELECT local_root_path FROM project_roots WHERE project_id=? ORDER BY verified_at LIMIT 1",a.project_id)?.local_root_path;
     const target=root&&join(root,".opencode","skills","adaptive-"+a.logical_key,"SKILL.md");
-    const active=this.store.get("SELECT content_digest FROM artifact_versions WHERE id=?",r.artifact_version_id);
-    if(!older || !target || !active || !existsSync(target) || contentDigest(readFileSync(target,"utf8"))!==active.content_digest)throw new Error("Cannot rollback drifted target");
+    const active=this.store.get("SELECT storage_path,content_digest FROM artifact_versions WHERE id=?",r.artifact_version_id);
+    if(!older || !target || !active)throw new Error("Cannot rollback drifted target");
     const content=readFileSync(older.storage_path,"utf8");
     if(contentDigest(content)!==older.content_digest)throw new Error("Rollback version corrupted");
-    atomicPrivate(target+".rollback",content);renameSync(target+".rollback",target);
-    this.store.txn(()=>{
-      this.store.run("UPDATE releases SET state='rolled_back' WHERE id=? AND state='active'",id);
-      this.store.run("UPDATE releases SET state='active' WHERE id=? AND state='superseded'",older.id);
-      this.store.run("UPDATE publication_targets SET status='removed' WHERE release_id=?",id);
-      this.audit(a.project_id,"release.rollback",id);
-    });
-    return older.id;
+    const current=existsSync(target)?contentDigest(readFileSync(target,"utf8")):null;
+    const alreadyRestored=current===older.content_digest;
+    if(r.state==="rolled_back"){
+      if(!alreadyRestored)throw new Error("Cannot rollback drifted target");
+      return older.id as string;
+    }
+    if(!alreadyRestored && current!==active.content_digest)throw new Error("Cannot rollback drifted target");
+    let wrote=false;
+    if(!alreadyRestored){
+      atomicPrivate(target+".rollback",content);renameSync(target+".rollback",target);
+      wrote=true;
+    }
+    try{
+      this.store.txn(()=>{
+        const changed=this.store.run("UPDATE releases SET state='rolled_back' WHERE id=? AND state='active'",id);
+        if(Number(changed.changes)!==1)throw new Error("Release state changed");
+        this.store.run("UPDATE releases SET state='active' WHERE id=? AND state='superseded'",older.id);
+        this.store.run("UPDATE publication_targets SET status='removed' WHERE release_id=?",id);
+        this.store.run("UPDATE artifact_versions SET status='retired' WHERE id=?",r.artifact_version_id);
+        this.store.run("UPDATE artifact_versions SET status='published' WHERE id=?",older.artifact_version_id);
+        this.audit(a.project_id,"release.rollback",id);
+      });
+    }catch(error){
+      if(wrote){
+        try{
+          const body=readFileSync(active.storage_path,"utf8");
+          if(contentDigest(body)===active.content_digest){
+            atomicPrivate(target+".restore-rollback",body);renameSync(target+".restore-rollback",target);
+          }
+        }catch{}
+      }
+      throw error;
+    }
+    return older.id as string;
   }
 }

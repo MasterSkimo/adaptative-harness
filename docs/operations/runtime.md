@@ -29,17 +29,20 @@ node --experimental-strip-types apps/cli/src/main.ts install --provider opencode
 
 # Daemon is independent of OpenCode/T3; start it in a terminal.
 node --experimental-strip-types apps/cli/src/main.ts daemon start
+
+# Stop it from another terminal through the authenticated endpoint.
+node --experimental-strip-types apps/cli/src/main.ts daemon stop
 ```
 
 After startup, use `status` and `doctor --provider opencode --launcher cli` to diagnose the Harness process and native callback coverage. OpenCode discovers project plugins when loading its configuration. Test direct CLI and T3-launched sessions separately; neither launcher is automatically assumed supported.
 
-The daemon listens on an ephemeral `127.0.0.1` port. Its discovery file contains only protocol, port and PID; its bearer token is in a separate private file. Events must be sanitized before acceptance. The CLI creates a project/root registration and a source-to-project binding so arbitrary incoming project IDs do not suffice.
+The daemon takes `runtime/daemon.lock` before listening, so a second instance on the same state root fails without touching the live process. It listens on an ephemeral `127.0.0.1` port. Its discovery file contains only protocol, port, PID, instance ID and state-root fingerprint; its bearer token is in a separate private file. The CLI creates a project/root registration and a source-to-project binding so arbitrary incoming project IDs do not suffice.
 
 ## Pipeline
 
 1. Plugin emits allowlisted event metadata. If the daemon is unavailable, the event is spooled to a bounded, private file or dropped without changing the tool outcome.
 2. POST `/v1/events` verifies the bearer token and project binding, performs idempotent insertion and enqueues a classification job in the same SQLite transaction.
-3. A leased worker adds evidence and, where a failed tool call is followed by an observed success with the same signature in the same session, publishes a **project-local observational lesson** citing both evidence records.
+3. A leased worker adds evidence and, where a failed tool call is followed by an observed success with the same signature in the same session, records a **project-local candidate lesson** citing both evidence records. Candidates have confidence 0.5 and a retention deadline; they never enter retrieved context until an operator runs `memory publish`.
 4. The context endpoint filters for published, project-scoped memory and applies item/token limits. No untrusted observation is promoted to an executable instruction.
 5. Candidate `skill`/`rule` content is stored immutably and must pass structural/security checks and independent baseline/candidate fixture replay before declarative publication. Without a replay runner, the evaluation is **inconclusive** and the publisher refuses it.
 
@@ -61,6 +64,9 @@ The GUI refreshes every four seconds, with pause/manual refresh, project filteri
 
 ```bash
 node --experimental-strip-types apps/cli/src/main.ts memory search --project PROJECT_ID "Observed recovery"
+node --experimental-strip-types apps/cli/src/main.ts memory list --project PROJECT_ID --status candidate
+node --experimental-strip-types apps/cli/src/main.ts memory publish MEMORY_ID
+node --experimental-strip-types apps/cli/src/main.ts memory archive MEMORY_ID
 node --experimental-strip-types apps/cli/src/main.ts candidates list --project PROJECT_ID
 node --experimental-strip-types apps/cli/src/main.ts candidates propose --project PROJECT_ID --kind skill --key review --file ./SKILL.md --evidence FAILURE_ID,SUCCESS_ID
 node --experimental-strip-types apps/cli/src/main.ts candidates evaluate PROPOSAL_ID
@@ -71,20 +77,27 @@ node --experimental-strip-types apps/cli/src/main.ts releases rollback RELEASE_I
 node --experimental-strip-types apps/cli/src/main.ts uninstall --provider opencode --scope project --root /path/to/project --apply
 ```
 
-`releases publish` rejects drafts/inconclusive results. The CLI does not expose an untrusted command executor or external inference by default. A `ReplayPort` is intentionally an isolated evaluator interface, not a locally executable shell runner. Global promotion, Codex and T3 UI are not part of the OpenCode-first release.
+`releases publish` rejects drafts/inconclusive results. It reserves a staged
+release before touching managed files, restores the previous verified bytes if a
+step fails, and finishes an interrupted attempt from its staged release on retry.
+`releases rollback` resumes safely after a crash and is idempotent. The CLI does
+not expose an untrusted command executor or external inference by default. A
+`ReplayPort` is intentionally an isolated evaluator interface, not a locally
+executable shell runner. Global promotion, Codex and T3 UI are not part of the
+OpenCode-first release.
 
 ## Verification coverage
 
 The full [V1 test plan](../testing/v1-test-plan.md) includes Windows/Linux and CLI/T3 matrices, fault injection, privacy threats, performance targets, GUI authentication, native reload and release gates. Synthetic CI does not validate native OpenCode behavior.
 
-- `tests/runtime.test.ts`: schema, ingested events, deduplication, source/project scopes, failure/success memory, FTS retrieval, lease recovery, authentication and request size.
-- `tests/registry.test.ts`: immutable proposal deduplication, evidence isolation, fail-closed replay gate, native managed publication, rollback and loop-signature reset.
+- `tests/runtime.test.ts`: schema, ingested events, deduplication, source/project scopes, candidate lesson promotion/archival, FTS retrieval, lease recovery, daemon lock, automatic ticker drain, authenticated stop, discovery ownership, state-root ACL/retention checks, authentication and request size.
+- `tests/registry.test.ts`: immutable proposal deduplication, evidence isolation, secret/private-path heuristics, fail-closed replay gate, two-phase publication with crash resume, rollback resume, loop-signature reset.
 - `.github/workflows/runtime-tests.yml`: Windows and Linux Node 24 runtime suites.
 - `docs/testing/acceptance.md`: production exit gates which require observed provider runs, provider versions, timing, logs and verified snapshots.
 
 ## Known gaps
 
 - No verified full live OpenCode 2/T3 plugin test from this PR; callback coverage remains subject to runtime verification.
-- Native child agent lineage, skill reload, unplug/restart spool replay, Windows ACL enforcement, and benchmark SLOs require machine evidence.
-- No supplied isolated replay implementation; consequently no automatic skill/rule promotion can occur from the default configuration.
+- Native child agent lineage, skill reload, unplug/restart spool replay, state-root ACL acceptance on each release machine, and benchmark SLOs require machine evidence.
+- No supplied isolated replay implementation; consequently no skill/rule publication can occur from the default configuration. Heuristic lessons likewise require an explicit `memory publish`.
 - No Codex adapter or T3 code changes (ADR-0009).

@@ -77,11 +77,17 @@ try{
   check("SMOKE-005",(await send(failure)).status===200);
   check("SMOKE-006",(await send({...failure,outcome:"succeeded"})).status===409);
   check("SMOKE-007",(await send(success)).status===202);
+  const candidates=await deadline(()=>{
+    const listed=call("memory","list","--project",projectId,"--status","candidate");
+    return listed.items.length===1?listed.items:null;
+  });
+  check("SMOKE-008",candidates.length===1,{evidence:"observed failed-success signature yielded one candidate lesson, not published context"});
+  const promoted=call("memory","publish",candidates[0].memoryId);
+  check("SMOKE-008b",promoted.status==="published",{evidence:"explicit user promotion publishes the cited lesson"});
   await deadline(async()=>{
     const s=await fetch(base+"/v1/status",{headers:auth});
     return (await s.json()).memories===1;
   });
-  check("SMOKE-008",true,{evidence:"observed failed-success signature yielded one published project memory"});
   const resolved=await fetch(base+"/v1/context/resolve",{
     method:"POST",headers:auth,body:JSON.stringify({schemaVersion:1,provider:"opencode",sourceInstanceId:source,
       projectId,nativeSessionId:"second-session",query:"Observed recovery",maxItems:5,maxTokens:600})
@@ -105,14 +111,22 @@ try{
   const entries=await rows.json();
   check("SMOKE-014",rows.status===200&&entries.items.length===2&&entries.items.every(e=>e.projectId===projectId));
   check("SMOKE-015",(await fetch(base+"/v1/status",{headers:{cookie}})).status===401);
+  const archived=call("memory","archive",candidates[0].memoryId);
+  check("SMOKE-016",archived.status==="archived",{evidence:"archiving removes a lesson from retrieved context"});
+  const afterArchive=await fetch(base+"/v1/context/resolve",{
+    method:"POST",headers:auth,body:JSON.stringify({schemaVersion:1,provider:"opencode",sourceInstanceId:source,
+      projectId,nativeSessionId:"third-session",query:"Observed recovery",maxItems:5,maxTokens:600})
+  });
+  check("SMOKE-017",afterArchive.status===200&&(await afterArchive.json()).items.length===0);
   status="passed";
 }catch(error){
   errorCode=error instanceof Error?error.message.slice(0,200):"unknown";
   results.push({id:"SMOKE-ERROR",status:"failed",at:stamp(),errorCode});
 }finally{
   if(daemon){
-    daemon.kill("SIGTERM");
-    await Promise.race([new Promise(resolve=>daemon.once("exit",resolve)),wait(1200)]);
+    // Authenticated endpoint instead of signalling a PID from disk.
+    try{call("daemon","stop");}catch{}
+    await Promise.race([new Promise(resolve=>daemon.once("exit",resolve)),wait(3000)]);
     if(daemon.exitCode===null)daemon.kill("SIGKILL");
   }
   rmSync(workspace,{recursive:true,force:true});
