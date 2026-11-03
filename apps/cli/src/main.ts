@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { Daemon } from "../../daemon/src/server.ts";
 import { Store } from "../../../packages/storage/src/store.ts";
@@ -111,6 +111,20 @@ async function main(){
       }else throw new Error("Expected daemon start|stop");
       break;
     }
+    case "ui":{
+      // A one-time pairing URL authorizes only the read-only UI for two hours.
+      const pairing=await request("/v1/ui/pair","POST",{},root,1000);
+      if(!has("no-open")){
+        const launcher=process.platform==="win32"?"rundll32.exe":process.platform==="darwin"?"open":"xdg-open";
+        const args=process.platform==="win32"?["url.dll,FileProtocolHandler",pairing.url]:[pairing.url];
+        const child=spawn(launcher,args,{detached:true,stdio:"ignore"});
+        child.on("error",()=>{}); // Missing browser opener must not affect Harness or CLI.
+        child.unref();
+      }
+      info({url:pairing.url,expiresInSeconds:pairing.expiresInSeconds,
+        message:"One-time local UI link. The browser receives a read-only session, not the Harness bearer token."});
+      break;
+    }
     case "status":{
       let status:unknown={daemon:"offline"};
       try{status=await request("/v1/status");}catch{}
@@ -158,6 +172,7 @@ async function main(){
     }
     default:info(`adaptive-harness commands:
   daemon start|stop
+  ui [--no-open]
   project register --root PATH
   install|uninstall --provider opencode --scope project|user [--root PATH] [--apply]
   doctor --provider opencode --launcher cli|t3 [--json]

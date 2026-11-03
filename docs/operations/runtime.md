@@ -18,6 +18,7 @@ Run from the repository root:
 npm install --ignore-scripts
 npm run check
 npm test
+npm run test:smoke
 
 # Register an actual project root (creates only Harness-owned runtime data)
 node --experimental-strip-types apps/cli/src/main.ts project register --root /path/to/project
@@ -42,6 +43,20 @@ The daemon listens on an ephemeral `127.0.0.1` port. Its discovery file contains
 4. The context endpoint filters for published, project-scoped memory and applies item/token limits. No untrusted observation is promoted to an executable instruction.
 5. Candidate `skill`/`rule` content is stored immutably and must pass structural/security checks and independent baseline/candidate fixture replay before declarative publication. Without a replay runner, the evaluation is **inconclusive** and the publisher refuses it.
 
+## Live GUI
+
+From a second terminal after `daemon start`:
+
+```bash
+npm run ui
+# Alternative: print the one-time link without opening a browser
+npm run cli -- ui --no-open
+```
+
+The daemon serves `/ui` and `/ui/api/{overview,history}` from the same `127.0.0.1` socket. The CLI authenticates with its private bearer and obtains a **60-second single-use pairing link**. After redemption, the browser receives a 2-hour `HttpOnly; SameSite=Strict; Path=/ui` session. The browser never receives the daemon's private bearer or access to `/v1/events` via its cookie.
+
+The GUI refreshes every four seconds, with pause/manual refresh, project filtering, history pagination, and detail panels. It reports **only persisted observation metadata**; agent reasoning, uncollected operations, prompts and raw code remain invisible. Session state is lost when the daemon restarts, requiring a new `ui` link. No remote assets, external telemetry or T3 modifications.
+
 ## Candidate/release commands
 
 ```bash
@@ -59,6 +74,8 @@ node --experimental-strip-types apps/cli/src/main.ts uninstall --provider openco
 `releases publish` rejects drafts/inconclusive results. The CLI does not expose an untrusted command executor or external inference by default. A `ReplayPort` is intentionally an isolated evaluator interface, not a locally executable shell runner. Global promotion, Codex and T3 UI are not part of the OpenCode-first release.
 
 ## Verification coverage
+
+The full [V1 test plan](../testing/v1-test-plan.md) includes Windows/Linux and CLI/T3 matrices, fault injection, privacy threats, performance targets, GUI authentication, native reload and release gates. Synthetic CI does not validate native OpenCode behavior.
 
 - `tests/runtime.test.ts`: schema, ingested events, deduplication, source/project scopes, failure/success memory, FTS retrieval, lease recovery, authentication and request size.
 - `tests/registry.test.ts`: immutable proposal deduplication, evidence isolation, fail-closed replay gate, native managed publication, rollback and loop-signature reset.

@@ -45,8 +45,12 @@
 - [ ] M3-01: Deterministic loop signatures with false-positive benchmark (AT-017).
 - [ ] M3-02: Enable native provider blocking only for proven capability and policy (AT-018).
 - [ ] M3-03: CLI reports for correction recurrence, cost estimates and release outcomes (AT-019/028).
-- [ ] M3-04: Optional read-only T3 panel consuming the public API without package imports (AT-021).
+- [x] M3-04: Standalone daemon-served **local read-only GUI** with scoped event/job/learning/audit views (UI-001–012); native browser acceptance still required. No T3 panel or core patch.
 - [ ] M3-05: Packaging and install/uninstall on Windows and Linux with restore validation (AT-020).
+
+## Test execution
+
+See [complete V1 test plan](../testing/v1-test-plan.md) and [the synthetic evidence template](../testing/evidence-template.json). The CI test suites and local process smoke are not substitutes for native CLI/T3 fault-injection and reload acceptance.
 
 ## Project constraints for every PR
 

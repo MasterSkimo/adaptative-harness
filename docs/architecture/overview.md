@@ -1,6 +1,6 @@
 # Adaptive Harness V1 — Technical architecture
 
-Status: **Proposed** · Updated: 2026-11-02 · Target: Codex and OpenCode 2.x, Windows 11 and Linux.
+Status: **Implemented in part** · Updated: 2026-11-03 · Target: Codex and OpenCode 2.x, Windows 11 and Linux.
 
 ## Context and boundaries
 
@@ -45,7 +45,7 @@ flowchart TB
 - **Evaluation**: runs deterministic static gates, historical replay and optional A/B task-level regression on isolated copies.
 - **Registry/Publisher**: stores immutable artifact versions, enforces scope and promotion gates, makes releases available to native provider config directories; auditable rollback.
 - **Loop Guard**: optional, deterministic per-session signatures. Blocking only through provider-approved pre-tool hooks, with explicit per-capability checks.
-- **Observability**: trace IDs, queue state, outcomes and cost estimation; no raw prompts by default.
+- **Observability**: trace IDs, queue state, outcomes and cost estimation; no raw prompts by default. The daemon serves a **local read-only GUI** with single-use CLI pairing and scoped browser sessions.
 
 ## Operating modes
 
@@ -83,7 +83,7 @@ See [events](../contracts/events.md), [provider contract](../contracts/adapter.m
 
 ## Out of scope
 
-Agent orchestration, DAG task management, model/account authentication proxy, multi-device synchronization, remote deployment, central telemetry, automatic arbitrary hook generation, self-modifying application code, web UI, background task execution in T3.
+Agent orchestration, DAG task management, model/account authentication proxy, multi-device synchronization, remote deployment, central telemetry, automatic arbitrary hook generation, self-modifying application code, remote administrative web UI, background task execution in T3.
 
 ## Tracked integration unknowns
 

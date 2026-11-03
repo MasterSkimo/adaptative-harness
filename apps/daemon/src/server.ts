@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import { existsSync, unlinkSync } from "node:fs";
 import { Store } from "../../../packages/storage/src/store.ts";
+import { DashboardUi } from "./dashboard-ui.ts";
 import { Worker } from "../../../packages/core/src/worker.ts";
 import { atomicPrivate, loadSettings, prepare, token } from "../../../packages/core/src/config.ts";
 import { ContractError, parseContext, parseEvent, sanitizeEvent } from "../../../packages/contracts/src/index.ts";
@@ -30,7 +31,7 @@ function authenticated(header:string|undefined,secret:string):boolean{
   return a.length===b.length && timingSafeEqual(a,b);
 }
 export class Daemon {
-  readonly store:Store; readonly worker:Worker; readonly settings;
+  readonly store:Store; readonly worker:Worker; readonly settings; readonly ui:DashboardUi;
   private readonly secret:string;
   private readonly server:http.Server;
   private ticker:NodeJS.Timeout|undefined;
@@ -40,6 +41,7 @@ export class Daemon {
     prepare(root);this.secret=token(root);this.settings=loadSettings(root);
     this.store=new Store(join(root,"data","harness.sqlite"));
     this.worker=new Worker(this.store);
+    this.ui=new DashboardUi(this.store);
     this.server=http.createServer((req,res)=>void this.handle(req,res));
     this.server.requestTimeout=3000;this.server.headersTimeout=3000;
     this.server.maxConnections=128;
@@ -51,8 +53,15 @@ export class Daemon {
         return json(res,403,{code:"FORBIDDEN",message:"Local client required"});
       }
       if(req.method==="GET" && req.url==="/health")return json(res,200,{status:"ok",protocolVersion:1});
-      if(!authenticated(req.headers.authorization,this.secret))return json(res,401,{code:"UNAUTHORIZED",message:"Bearer token required"});
       const url=new URL(req.url||"/","http://127.0.0.1");
+      // Browser sessions grant access only to the read-only /ui namespace.
+      if(this.ui.handle(req,res,url))return;
+      if(!authenticated(req.headers.authorization,this.secret))return json(res,401,{code:"UNAUTHORIZED",message:"Bearer token required"});
+      if(req.method==="POST" && url.pathname==="/v1/ui/pair"){
+        const address=this.server.address();
+        if(!address || typeof address==="string")throw new ContractError("Daemon not listening",503);
+        return json(res,200,this.ui.createPairing(address.port));
+      }
       if(req.method==="POST" && url.pathname==="/v1/events"){
         if(!this.settings.collection.enabled)return json(res,403,{code:"DISABLED",message:"Collection disabled"});
         if(Number(this.store.stats().queued)>10000)return json(res,429,{code:"BACKPRESSURE",message:"Queue full"});
@@ -96,6 +105,7 @@ export class Daemon {
   }
   async stop(){
     if(this.ticker)clearInterval(this.ticker);
+    this.ui.close();
     await new Promise<void>((resolve,reject)=>this.server.close(e=>e?reject(e):resolve()));
     const path=join(this.root,"runtime","discovery.json");
     if(existsSync(path))unlinkSync(path);

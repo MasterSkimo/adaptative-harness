@@ -6,6 +6,8 @@ on:
       - 'packages/**'
       - 'migrations/**'
       - 'tests/*.test.ts'
+      - 'scripts/**'
+      - 'docs/testing/**'
       - 'package.json'
       - 'tsconfig.json'
       - '.github/workflows/runtime-tests.yml'
@@ -29,3 +31,13 @@ jobs:
         run: npm run check
       - name: TypeScript and SQLite runtime tests
         run: npm test
+      - name: Process-level acceptance smoke
+        run: npm run test:smoke -- reports/local-smoke.json
+      - name: Upload synthetic acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-smoke-${{ matrix.os }}
+          path: reports/local-smoke.json
+          if-no-files-found: ignore
+          retention-days: 14

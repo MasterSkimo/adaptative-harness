@@ -11,7 +11,9 @@
     "start": "node --experimental-strip-types apps/cli/src/main.ts daemon start",
     "cli": "node --experimental-strip-types apps/cli/src/main.ts",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test:smoke": "node scripts/local-smoke.mjs",
+    "ui": "node --experimental-strip-types apps/cli/src/main.ts ui"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
