@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { Daemon } from "../apps/daemon/src/server.ts";
 import { token } from "../packages/core/src/config.ts";
 import { history, overview } from "../packages/core/src/dashboard.ts";
@@ -71,6 +73,15 @@ test("browser UI requires a one-time pairing; cookies cannot access core APIs",a
     assert.equal(pair.status,200);
     const ticket=await pair.json() as {url:string;expiresInSeconds:number};
     assert.equal(ticket.expiresInSeconds,60);
+    // CLI uses the private token only to request another single-use browser ticket.
+    const cli=fileURLToPath(new URL("../apps/cli/src/main.ts",import.meta.url));
+    const output=spawnSync(process.execPath,["--experimental-strip-types",cli,"ui","--no-open"],{
+      encoding:"utf8",timeout:10000,env:{...process.env,ADAPTIVE_HARNESS_HOME:root}
+    });
+    assert.equal(output.status,0,output.stderr);
+    const cliTicket=JSON.parse(output.stdout) as {url:string};
+    assert.match(cliTicket.url,/^http:\/\/127\.0\.0\.1:\d+\/ui\/activate\?code=[0-9a-f]{64}$/);
+
     assert.match(ticket.url,/^http:\/\/127\.0\.0\.1:\d+\/ui\/activate\?code=[0-9a-f]{64}$/);
     const activated=await fetch(ticket.url,{redirect:"manual"});
     assert.equal(activated.status,303);
