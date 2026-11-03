@@ -68,7 +68,7 @@ async function flush(project:string){
       if(!existsSync(current))return;
       renameSync(current,draining);
     }
-    const lines=readFileSync(draining,"utf8").split("\n").filter(Boolean).slice(0,5000);
+    const lines=readFileSync(draining,"utf8").split("\n").filter(Boolean);
     const pending:string[]=[];
     for(let i=0;i<lines.length;i++){
       let item:Value;
@@ -115,6 +115,8 @@ export default Plugin.define({
       sends.add(task);void task.finally(()=>sends.delete(task));
     };
     const inflight=new Map<string,string>();
+    const failedSignatures=new Map<string,number>(); // Observe, never block, repeated identical failures.
+
     const controller=new AbortController();
     const launcher=text(process.env.ADAPTIVE_HARNESS_LAUNCHER)||"unknown";
     // Only claim capabilities when a callback actually fired.
@@ -172,6 +174,19 @@ export default Plugin.define({
         if(code)metadata.errorCode=code;
         send(envelope({source,project,version,session:native,kind:"tool.completed",
           key:"after:"+native+":"+call,launcher,outcome:status,metadata}));
+        // A successful mutation changes the task state and resets failure-loop evidence.
+        if(status==="succeeded" && ["edit","write","patch","apply_patch","multiedit"].includes(tool)){
+          for(const key of failedSignatures.keys())if(key.startsWith(native+":"))failedSignatures.delete(key);
+        }
+        if(status==="failed" && input){
+          const signature=native+":"+tool+":"+input;
+          const count=(failedSignatures.get(signature)??0)+1;
+          if(failedSignatures.size>1000)failedSignatures.clear();
+          failedSignatures.set(signature,count);
+          if(count===3)send(envelope({source,project,version,session:native,
+            kind:"provider.diagnostic",key:"loop:"+signature+":"+call,launcher,
+            outcome:"unknown",metadata:{diagnosticCode:"repeated_failed_call",toolName:tool,inputDigest:input}}));
+        }
       }catch{/* Observation is fail open. */}
     });
     await ctx.session.hook("context",async raw=>{
