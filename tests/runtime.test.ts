@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { Store } from "../packages/storage/src/store.ts";
+import { history, overview } from "../packages/core/src/dashboard.ts";
 import { Worker } from "../packages/core/src/worker.ts";
 import { parseContext, parseEvent, ContractError } from "../packages/contracts/src/index.ts";
 import { Daemon } from "../apps/daemon/src/server.ts";
@@ -213,4 +214,53 @@ test("HTTP bearer, host, 64KiB boundary, collision, context and health",async()=
       schemaVersion:1,provider:"opencode",sourceInstanceId:"source_opencode_test",projectId:a,nativeSessionId:"s",query:"recovery",maxItems:5,maxTokens:600
     })})).status,200);
   }finally{await daemon.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+// The OpenCode 2 execution can finish while its T3 conversation remains open.
+test("session execution lifecycle is independent of conversation closure",()=>{
+  const f=fixture();
+  try{
+    const send=(kind:string,outcome:"succeeded"|"failed"|"cancelled"|"unknown"="unknown")=>
+      f.store.ingest(event(f.a,{eventType:kind,outcome}));
+    const read=()=>history(f.store,{kind:"sessions",projectId:f.a}).items[0];
+    send("session.started");
+    assert.equal(read().status,"running");
+    assert.equal(read().executionStatus,"unknown");
+    const first=event(f.a,{eventType:"turn.started",outcome:"unknown"});
+    f.store.ingest(first);
+    assert.equal(read().executionStatus,"running");
+    assert.equal(overview(f.store,f.a).metrics.running,1);
+    const finished=event(f.a,{eventType:"turn.ended",outcome:"succeeded"});
+    f.store.ingest(finished);
+    assert.equal(read().status,"idle");
+    assert.equal(read().lifecycleStatus,"running");
+    assert.equal(read().executionStatus,"succeeded");
+    assert.equal(read().finishedAt,null);
+    assert.ok(read().executionFinishedAt);
+    assert.equal(overview(f.store,f.a).metrics.running,0);
+
+    // A new user prompt reopens the execution, not the conversation.
+    send("turn.started");
+    assert.equal(read().status,"running");
+    assert.equal(read().executionStatus,"running");
+    assert.equal(read().executionFinishedAt,null);
+    send("turn.ended","failed");
+    assert.equal(read().status,"idle");
+    assert.equal(read().executionStatus,"failed");
+    send("turn.started");
+    send("turn.ended","cancelled");
+    assert.equal(read().status,"idle");
+    assert.equal(read().executionStatus,"cancelled");
+    assert.equal(overview(f.store,f.b).metrics.running,0);
+
+    // Idempotent redelivery must not clobber the newer execution status.
+    assert.equal(f.store.ingest(first).disposition,"duplicate");
+    assert.equal(f.store.ingest(finished).disposition,"duplicate");
+    assert.equal(read().executionStatus,"cancelled");
+    assert.equal(f.store.get("SELECT COUNT(*) n FROM session_execution_state")?.n,1);
+    send("session.ended","succeeded");
+    assert.equal(read().status,"completed");
+    assert.equal(read().lifecycleStatus,"completed");
+    assert.ok(read().finishedAt);
+  }finally{f.end();}
 });

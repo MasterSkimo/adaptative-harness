@@ -101,3 +101,22 @@ The full [V1 test plan](../testing/v1-test-plan.md) includes Windows/Linux and C
 - Native child agent lineage, skill reload, unplug/restart spool replay, state-root ACL acceptance on each release machine, and benchmark SLOs require machine evidence.
 - No supplied isolated replay implementation; consequently no skill/rule publication can occur from the default configuration. Heuristic lessons likewise require an explicit `memory publish`.
 - No Codex adapter or T3 code changes (ADR-0009).
+
+## OpenCode 2 execution lifecycle (T3 and CLI)
+
+In OpenCode 2 the native `session.execution.started/succeeded/failed/interrupted` notifications describe an **execution**, not the end of the reusable conversation. The connector maps them to `turn.started/turn.ended`, while only `session.deleted` closes the session itself. `session.idle` is a compatibility fallback for older provider versions, never an irreversible session deletion.
+
+The GUI's Sessions table shows **Conversation** and **Exécution** separately. A finished execution is `Terminée` and its still-open session is `En attente`. Previously collected sessions without a native execution lifecycle are `Non observées`, not assumed to be running or completed. Existing records cannot be retroactively inferred from uncollected provider events.
+
+After pulling the latest branch, **stop T3/OpenCode, stop the Harness daemon, upgrade the project plugin with a preview, then restart**:
+
+```bash
+npm run cli -- daemon stop
+npm run cli -- install --provider opencode --scope project --root /path/to/project
+npm run cli -- install --provider opencode --scope project --root /path/to/project --apply
+npm run start
+# In a second shell:
+npm run ui
+```
+
+The installer updates an **exact unmodified previous plugin version**, but refuses to overwrite locally edited or unknown content. The daemon applies migration 0004 on startup. Start a **new execution** in T3 after restarting; the new execution events, not old idle sessions, are what prove the fix. Native T3 testing remains an acceptance requirement; synthetic CI callback playback is not a live provider test.

@@ -54,7 +54,12 @@ function install(remove=false){
   const target=pluginTarget(scope,path);
   const content=readFileSync(pluginSource,"utf8");
   const current=existsSync(target)?readFileSync(target,"utf8"):undefined;
-  const ours=(current===undefined || current===content);
+  // Recognize an exact previously managed plugin; refuse any user-modified file.
+  const previouslyManaged=new Set(["0ae9e6d4c16c9109933f231231f7c4ef821ceb9a"]);
+  const gitBlob=(value:string)=>createHash("sha1")
+    .update("blob "+Buffer.byteLength(value,"utf8"))
+    .update(Buffer.from([0])).update(value).digest("hex");
+  const ours=(current===undefined || current===content || previouslyManaged.has(gitBlob(current)));
   if(!ours)throw new Error("Refusing to overwrite/delete a user-modified plugin at "+target);
   const changes=current===undefined?"create":current===content?"none":"replace";
   const plan={provider:"opencode",scope,target,operation:remove?(current?"remove":"none"):changes,warnings:[] as string[]};
@@ -66,6 +71,7 @@ function install(remove=false){
   if(scope==="project")registerProject(path);
   mkdirSync(dirname(target),{recursive:true,mode:0o700});
   if(current===undefined)writeFileSync(target,content,{flag:"wx",mode:0o600});
+  else if(current!==content)atomicPrivate(target,content); // Atomic version upgrade when content matches a known prior release.
   info({...plan,applied:true});
 }
 function doctor(){
@@ -77,7 +83,7 @@ function doctor(){
   catch{}
   const name=flag("launcher")||"unknown";
   const supported=new Set(Array.isArray(observed.observed)&&observed.launcher===name?observed.observed:[]);
-  const kinds=["session_events","tool_before","tool_after","subagent_lifecycle","transcript_reference",
+  const kinds=["session_events","session_execution_events","tool_before","tool_after","subagent_lifecycle","transcript_reference",
     "context_injection","compaction","synchronous_block","skills_read","skills_write","config_reload"];
   const capabilities=Object.fromEntries(kinds.map(k=>[k,{status:supported.has(k)?"supported":"unknown",
     observedAt:supported.has(k)?observed.at:null,providerVersion,launcher:name,os:process.platform}]));

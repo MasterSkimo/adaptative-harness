@@ -136,15 +136,26 @@ export default Plugin.define({
         for await(const input of ctx.event.subscribe({signal:controller.signal})){
           const e=record(input),kind=text(e.type),native=session(e);
           if(!kind||!native)continue;
-          const mapped:Record<string,string>={
-            "session.created":"session.started","session.deleted":"session.ended",
-            "session.idle":"session.ended","session.error":"session.ended"
+          // OpenCode 2 emits execution lifecycle events, not session.idle.
+          // Finishing an execution must not close a reusable T3 conversation.
+          const mapped:Record<string,{kind:string;outcome:string}>={
+            "session.created":{kind:"session.started",outcome:"unknown"},
+            "session.deleted":{kind:"session.ended",outcome:"succeeded"},
+            "session.execution.started":{kind:"turn.started",outcome:"unknown"},
+            "session.execution.succeeded":{kind:"turn.ended",outcome:"succeeded"},
+            "session.execution.failed":{kind:"turn.ended",outcome:"failed"},
+            "session.execution.interrupted":{kind:"turn.ended",outcome:"cancelled"},
+            // Legacy events remain a fallback for versions that still publish them.
+            "session.idle":{kind:"turn.ended",outcome:"succeeded"},
+            "session.error":{kind:"turn.ended",outcome:"failed"}
           };
-          if(!mapped[kind])continue;
+          const transition=mapped[kind];
+          if(!transition)continue;
           capability("session_events");
-          const event=envelope({source,project,version,session:native,kind:mapped[kind],
+          if(kind.startsWith("session.execution."))capability("session_execution_events");
+          const event=envelope({source,project,version,session:native,kind:transition.kind,
             key:kind+":"+native+":"+digest(e),parent:parent(e),
-            outcome:kind==="session.error"?"failed":"unknown",launcher});
+            outcome:transition.outcome,launcher});
           send(event);
         }
       }catch{/* Stream shutdown is non-fatal. */}

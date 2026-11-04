@@ -21,7 +21,7 @@ const titles = {
 };
 const columns = {
   events:[["at","Observé"],["type","Événement"],["outcome","Issue"],["projectId","Projet"],["metadata.toolName","Outil"],["sessionId","Session"]],
-  sessions:[["at","Démarrée"],["sessionId","Session"],["projectId","Projet"],["status","Statut"],["finishedAt","Terminée"]],
+  sessions:[["at","Démarrée"],["sessionId","Session"],["projectId","Projet"],["status","Conversation"],["executionStatus","Exécution"],["executionFinishedAt","Fin exécution"]],
   jobs:[["at","Créé"],["type","Job"],["projectId","Projet"],["status","Statut"],["attempts","Tentatives"],["errorCode","Erreur"]],
   memories:[["at","Créée"],["title","Mémoire"],["type","Type"],["status","Statut"],["evidenceCount","Preuves"],["projectId","Projet"]],
   proposals:[["at","Créé"],["type","Type"],["status","Statut"],["projectId","Projet"],["evidenceCount","Preuves"],["digest","Digest"]],
@@ -34,7 +34,7 @@ const columns = {
 const statusWords = {
   accepted:"Accepté",duplicate:"Doublon",running:"En cours",completed:"Terminé",
   succeeded:"Réussi",success:"Réussi",failed:"Échec",dead:"Abandonné",leased:"Réservé",
-  queued:"En attente",cancelled:"Annulé",blocked:"Bloqué",unknown:"Inconnu",
+  queued:"En attente",idle:"En attente",cancelled:"Interrompu",blocked:"Bloqué",unknown:"Inconnu",
   eligible:"Éligible",draft:"Brouillon",promoted:"Promu",evaluating:"Évaluation",
   inconclusive:"Non concluant",passed:"Validé",rejected:"Rejeté",active:"Actif",
   superseded:"Remplacé",rolled_back:"Annulé",published:"Publié",candidate:"Candidat",
@@ -88,7 +88,10 @@ function projectName(id){
 function valueOf(record,key){
   let v=key.split(".").reduce((o,k)=>o?.[k],record);
   if(key==="projectId")return projectName(v);
-  if(key==="at"||key==="occurredAt"||key==="finishedAt"||key==="publishedAt"||key==="updatedAt")return date(v);
+  if(key==="at"||key==="occurredAt"||key==="finishedAt"||key==="publishedAt"||key==="updatedAt"||key==="executionFinishedAt")return date(v);
+  if(key==="executionStatus")return {
+    running:"En cours",succeeded:"Terminée",failed:"Échouée",cancelled:"Interrompue",unknown:"Non observée"
+  }[v]||display(v);
   if(key==="baselineScore"||key==="candidateScore")return v==null?"—":(100*Number(v)).toFixed(1)+" %";
   if(key==="estimatedCostMicrousd")return (Number(v||0)/1e6).toFixed(6)+" $";
   if(key==="outcome"||key==="status")return statusWords[v]||display(v);
@@ -129,7 +132,7 @@ function renderMetrics(m){
   const container=$("metrics");clear(container);
   container.append(
     metric("Événements",m.events,"Traces normalisées","◷"),
-    metric("Sessions",m.sessions,number(m.running)+" encore en cours","▣"),
+    metric("Sessions",m.sessions,number(m.running)+" exécutions en cours","▣"),
     metric("Traitements en attente",m.queued,number(m.retrying)+" en reprise","≋"),
     metric("Mémoires publiées",m.memories,number(m.proposals)+" candidatures","◇"),
     metric("Appels en échec",m.failedTools,"Outils observés","!"),
@@ -226,7 +229,7 @@ function renderRows(){
     for(const [key] of fields){
       const cell=document.createElement("td");
       const val=valueOf(item,key);
-      if(key==="status"||key==="outcome"){
+      if(key==="status"||key==="outcome"||key==="executionStatus"){
         cell.append(make("span","pill "+statusKey(item[key]),val));
       }else{
         const id=/^(id|sessionId|sourceId|versionId|subjectId|digest|projectId)$/.test(key);

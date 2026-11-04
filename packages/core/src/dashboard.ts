@@ -24,8 +24,15 @@ const sources: Record<RecordKind,{query:string;alias:string;projectColumn:string
   },
   sessions: {
     query:`SELECT s.rowid AS cursor,s.id,s.project_id AS projectId,s.provider_instance_id AS sourceId,
-      s.native_session_id AS sessionId,s.parent_session_id AS parentSessionId,s.status,
-      s.started_at AS at,s.finished_at AS finishedAt FROM sessions s`,
+      s.native_session_id AS sessionId,s.parent_session_id AS parentSessionId,
+      s.status AS lifecycleStatus,
+      CASE WHEN s.status='running' AND x.status IS NULL THEN 'unknown'
+        WHEN s.status='running' AND x.status IN ('succeeded','failed','cancelled')
+        THEN 'idle' ELSE s.status END AS status,
+      COALESCE(x.status,'unknown') AS executionStatus,
+      x.started_at AS executionStartedAt,x.finished_at AS executionFinishedAt,
+      s.started_at AS at,s.finished_at AS finishedAt
+      FROM sessions s LEFT JOIN session_execution_state x ON x.session_id=s.id`,
     alias:"s",projectColumn:"s.project_id"
   },
   jobs: {
@@ -138,7 +145,13 @@ export function overview(store:Store,projectId?:string){
   const metrics={
     events:count(store,"events",projectId),
     sessions:count(store,"sessions",projectId),
-    running:count(store,"sessions",projectId,"status='running'"),
+    // Only an observed execution start counts as running: an open T3 session is not a busy agent.
+    running:projectId?Number(store.get(`SELECT COUNT(*) AS n FROM session_execution_state x
+      JOIN sessions s ON s.id=x.session_id WHERE s.project_id=? AND s.status='running'
+      AND x.status='running'`,projectId)?.n??0):
+      Number(store.get(`SELECT COUNT(*) AS n FROM session_execution_state x
+        JOIN sessions s ON s.id=x.session_id WHERE s.status='running'
+        AND x.status='running'`)?.n??0),
     queued:count(store,"processing_jobs",projectId,"status IN ('queued','leased')"),
     retrying:count(store,"processing_jobs",projectId,"status='queued' AND attempts>0"),
     dead:count(store,"processing_jobs",projectId,"status='dead'"),

@@ -61,3 +61,25 @@ test("installer refuses to replace a user-modified managed file",()=>{
     assert.equal(readFileSync(path,"utf8"),"// custom content");
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+test("installer upgrades the exact previous OpenCode plugin without touching unknown edits",()=>{
+  const dir=mkdtempSync(join(tmpdir(),"harness-cli-upgrade-"));
+  const project=join(dir,"project"),home=join(dir,"harness");
+  mkdirSync(project);
+  try{
+    const target=join(project,".opencode","plugins","adaptive-harness","index.ts");
+    mkdirSync(dirname(target),{recursive:true});
+    // Fixture is the unmodified plugin from the previous PR commit.
+    const legacy=readFileSync(new URL("./fixtures/opencode-plugin-before-execution-events.txt",import.meta.url),"utf8");
+    writeFileSync(target,legacy);
+    const preview=invoke(home,"install","--provider","opencode","--scope","project","--root",project);
+    assert.equal(preview.status,0,preview.stderr);
+    assert.equal(JSON.parse(preview.stdout).operation,"replace");
+    assert.equal(readFileSync(target,"utf8"),legacy);
+    const upgraded=invoke(home,"install","--provider","opencode","--scope","project","--root",project,"--apply");
+    assert.equal(upgraded.status,0,upgraded.stderr);
+    assert.equal(JSON.parse(upgraded.stdout).operation,"replace");
+    assert.match(readFileSync(target,"utf8"),/"session.execution.succeeded"/);
+    assert.equal(invoke(home,"install","--provider","opencode","--scope","project","--root",project,"--apply").status,0);
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});

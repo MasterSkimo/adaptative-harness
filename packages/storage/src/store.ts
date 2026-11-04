@@ -33,6 +33,7 @@ export class Store {
     this.db.exec(readFileSync(join(schemaDir,"0001_init.sql"),"utf8"));
     this.db.exec(readFileSync(join(schemaDir,"0002_source_bindings.sql"),"utf8"));
     this.db.exec(readFileSync(join(schemaDir,"0003_proposal_evidence.sql"),"utf8"));
+    this.db.exec(readFileSync(join(schemaDir,"0004_session_execution_state.sql"),"utf8"));
   }
   close(){this.db.close();}
   txn<T>(fn:()=>T):T {
@@ -103,7 +104,29 @@ export class Store {
       const seq=Number(out.lastInsertRowid);
       const status=event.outcome==="failed"?"failed":event.outcome==="cancelled"?"cancelled":"completed";
       if(event.eventType==="session.ended"){
+        // Only a native session deletion closes the conversation itself.
         this.run("UPDATE sessions SET status=?,finished_at=? WHERE id=? AND status='running'",status,event.occurredAt,sessionId);
+      }
+      if(event.eventType==="turn.started" || event.eventType==="turn.ended"){
+        // A turn can finish while the underlying OpenCode/T3 session remains open.
+        // The latest persisted event wins; duplicate producer IDs are handled above.
+        const executionStatus=event.eventType==="turn.started"?"running":
+          event.outcome==="succeeded"?"succeeded":
+          event.outcome==="failed"?"failed":
+          event.outcome==="cancelled"?"cancelled":"unknown";
+        this.run(`INSERT INTO session_execution_state(
+            session_id,status,started_at,finished_at,event_sequence,updated_at)
+          VALUES(?,?,?,?,?,?)
+          ON CONFLICT(session_id) DO UPDATE SET
+            status=excluded.status,
+            started_at=CASE WHEN excluded.status='running'
+              THEN excluded.started_at ELSE session_execution_state.started_at END,
+            finished_at=excluded.finished_at,
+            event_sequence=excluded.event_sequence,
+            updated_at=excluded.updated_at
+          WHERE excluded.event_sequence>session_execution_state.event_sequence`,
+          sessionId,executionStatus,event.eventType==="turn.started"?event.occurredAt:null,
+          event.eventType==="turn.ended"?event.occurredAt:null,seq,t);
       }
       this.run(`INSERT INTO processing_jobs(id,idempotency_key,event_sequence,project_id,job_type,available_at,created_at,updated_at)
         VALUES(?,?,?,?,'classify',?,?,?)`,randomUUID(),"classify:"+event.sourceInstanceId+":"+event.eventId,seq,event.projectId,t,t,t);
