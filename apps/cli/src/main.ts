@@ -59,7 +59,10 @@ function install(remove=false){
   const gitBlob=(value:string)=>createHash("sha1")
     .update("blob "+Buffer.byteLength(value,"utf8"))
     .update(Buffer.from([0])).update(value).digest("hex");
-  const ours=(current===undefined || current===content || previouslyManaged.has(gitBlob(current)));
+  // Git on Windows may check out the same managed plugin with CRLF.
+  // Normalize only line endings for the exact known-version comparison.
+  const ours=(current===undefined || current===content ||
+    previouslyManaged.has(gitBlob(current.replace(/\\r\\n/g,"\\n"))));
   if(!ours)throw new Error("Refusing to overwrite/delete a user-modified plugin at "+target);
   const changes=current===undefined?"create":current===content?"none":"replace";
   const plan={provider:"opencode",scope,target,operation:remove?(current?"remove":"none"):changes,warnings:[] as string[]};
