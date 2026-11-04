@@ -62,7 +62,7 @@ function install(remove=false){
   // Git on Windows may check out the same managed plugin with CRLF.
   // Normalize only line endings for the exact known-version comparison.
   const ours=(current===undefined || current===content ||
-    previouslyManaged.has(gitBlob(current.replace(/\\r\\n/g,"\\n"))));
+    previouslyManaged.has(gitBlob(current.split(String.fromCharCode(13,10)).join(String.fromCharCode(10)))));
   if(!ours)throw new Error("Refusing to overwrite/delete a user-modified plugin at "+target);
   const changes=current===undefined?"create":current===content?"none":"replace";
   const plan={provider:"opencode",scope,target,operation:remove?(current?"remove":"none"):changes,warnings:[] as string[]};
