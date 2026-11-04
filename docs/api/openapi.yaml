@@ -3,8 +3,9 @@ info:
   title: Adaptive Harness Local API
   version: 1.0.0-draft
   description: |
-    Proposed local API. No daemon is implemented. All data endpoints require a
-    user-private bearer token. Server must bind only to 127.0.0.1.
+    Local API implemented by `apps/daemon`. All data endpoints require a
+    user-private bearer token. The server binds only to 127.0.0.1 and rejects
+    browser-originated requests. `/health` exposes no user data.
 servers:
   - url: http://127.0.0.1:{port}
     variables:
@@ -19,6 +20,100 @@ tags:
 security:
   - LocalToken: []
 paths:
+  /v1/ui/pair:
+    post:
+      tags: [runtime]
+      summary: Issue a one-time browser-pairing link (authenticated CLI only)
+      description: Bearer-authenticated. Link is single-use, expires in 60 seconds, and is not the persistent daemon token.
+      responses:
+        "200":
+          description: Local-only, single-use pairing link
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [url, expiresInSeconds]
+                properties:
+                  url: { type: string, format: uri }
+                  expiresInSeconds: { type: integer, const: 60 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /ui:
+    get:
+      tags: [diagnostics]
+      summary: Serve the read-only local dashboard (browser session only)
+      security: [{ LocalUiSession: [] }]
+      responses:
+        "200":
+          description: Local HTML dashboard; restrictive CSP, no-store and no-referrer
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /ui/api/overview:
+    get:
+      tags: [diagnostics]
+      summary: Scoped counters, recent activity and connector status for local GUI
+      security: [{ LocalUiSession: [] }]
+      parameters:
+        - name: projectId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Only stored, sanitized projections
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [protocolVersion, projects, metrics, recentEvents, recentAudit, sources]
+                properties:
+                  protocolVersion: { type: integer, const: 1 }
+                  projects: { type: array, items: { type: object } }
+                  metrics: { type: object }
+                  recentEvents: { type: array, items: { type: object } }
+                  recentAudit: { type: array, items: { type: object } }
+                  sources: { type: array, items: { type: object } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /ui/api/history:
+    get:
+      tags: [diagnostics]
+      summary: Read-only keyset pagination of a known projection
+      security: [{ LocalUiSession: [] }]
+      parameters:
+        - name: kind
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [events, sessions, jobs, memories, proposals, evaluations, releases, audit, sources, inference]
+        - name: projectId
+          in: query
+          schema: { type: string }
+        - name: before
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: Sanitized records and next cursor; no user file paths or credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [kind, items, hasMore, nextCursor]
+                properties:
+                  kind: { type: string }
+                  items: { type: array, items: { type: object } }
+                  hasMore: { type: boolean }
+                  nextCursor: { type: [integer, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /health:
     get:
       tags: [runtime]
@@ -36,6 +131,27 @@ paths:
                 properties:
                   status: { type: string, enum: [ok, degraded] }
                   protocolVersion: { type: integer, const: 1 }
+  /v1/daemon/stop:
+    post:
+      tags: [runtime]
+      summary: Authenticated graceful shutdown
+      description: |
+        Bearer-authenticated. The daemon acknowledges with 202, releases its
+        instance lock, removes its own discovery record and closes the store.
+        Clients never signal a PID read from disk.
+      responses:
+        "202":
+          description: Shutdown accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status: { type: string, const: stopping }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /v1/events:
     post:
       tags: [ingestion]
@@ -149,6 +265,11 @@ paths:
           $ref: "#/components/responses/Forbidden"
 components:
   securitySchemes:
+    LocalUiSession:
+      type: apiKey
+      in: cookie
+      name: ah_ui
+      description: In-memory HttpOnly SameSite=Strict cookie, Path=/ui, issued via one-time CLI pairing.
     LocalToken:
       type: http
       scheme: bearer

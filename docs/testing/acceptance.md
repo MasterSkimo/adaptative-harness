@@ -2,6 +2,8 @@
 
 **Status:** Proposed tests. **PASS is never implied by this document.** Collect real artifacts, versions and exact environment for each test. Requirements map to [FRs](../spec/v1-functional.md) and [NFRs](../spec/v1-non-functional.md).
 
+[Complete execution plan and GUI cases](v1-test-plan.md) · [Evidence template](evidence-template.json). This contract remains the source of AT-001–028.
+
 ## Required evidence for every test
 
 Record test ID, UTC time, OS/build, runtime version and exact provider instance, launch method (CLI/T3), project identity, fixture and commands, result, sanitized logs, artifact hashes and links to run reports. A test is **inconclusive** if the provider offers no verified event source; it is not passed by inference.

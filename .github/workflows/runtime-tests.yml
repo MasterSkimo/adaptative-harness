@@ -1,0 +1,45 @@
+name: Runtime contract tests
+on:
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'migrations/**'
+      - 'tests/*.test.ts'
+      - 'scripts/**'
+      - 'docs/testing/**'
+      - 'package.json'
+      - 'tsconfig.json'
+      - '.github/workflows/runtime-tests.yml'
+  push:
+    branches: [main]
+jobs:
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install TypeScript development dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Typecheck runtime packages
+        run: npm run check
+      - name: Browser script syntax
+        run: node --check apps/ui/public/app.js
+      - name: TypeScript and SQLite runtime tests
+        run: npm test
+      - name: Process-level acceptance smoke
+        run: npm run test:smoke -- reports/local-smoke.json
+      - name: Upload synthetic acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-smoke-${{ matrix.os }}
+          path: reports/local-smoke.json
+          if-no-files-found: ignore
+          retention-days: 14

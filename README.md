@@ -2,7 +2,7 @@
 
 Provider-independent, local-first **learning and governance companion** for coding agents. The repository intentionally retains its published name `adaptative-harness`.
 
-> **Status: architecture/specification V1. No agent connector, daemon or learning workflow is implemented yet.**
+> **Status: initial OpenCode 2 implementation in progress.** Local collection, evidence-linked project memory, CLI, and guarded declarative registry are implemented; live OpenCode 2/T3 integration and release acceptance remain unverified. Auto-promotion is disabled unless an independent, isolated replay evaluator is supplied.
 
 ## Objective
 
@@ -29,33 +29,49 @@ Learn from Codex and OpenCode executions, retain evidence-backed memories, evalu
 - [Memory, learning and promotion](docs/spec/learning-lifecycle.md)
 - [Security and trust boundaries](docs/spec/security.md)
 - [Architecture Decision Records](docs/adr/README.md)
-- [Acceptance criteria](docs/testing/acceptance.md)
+- [Acceptance criteria](docs/testing/acceptance.md) and [complete test plan](docs/testing/v1-test-plan.md)
 - [Spike 0 runbook](docs/plan/spike-0-runbook.md) and [implementation backlog](docs/plan/backlog.md)
 
-## Proposed repository shape
+## Repository shape
 
 ```text
-apps/{daemon,cli}/                 # Implement in milestones, not present yet
-packages/{contracts,connectors,core,storage}/  # Implement after Spike 0
+apps/{daemon,cli,ui}/              # Node.js 24 runtime, commands and local read-only dashboard
+packages/{contracts,connectors,core,storage}/  # Contracts, native OpenCode 2 plugin, memory and registry
 docs/architecture/                # Component and sequence boundaries
 docs/api/                         # Local API contract
 docs/contracts/                   # Event/adapter contracts and fixtures
 docs/adr/                         # ADRs, decisions and tradeoffs
 docs/spec/                        # Invariants, privacy, storage, lifecycle
-docs/testing/                     # Executable acceptance plan
+docs/testing/                     # Test matrix, reports and executable acceptance plan
 docs/plan/                        # Ordered milestones, spike and backlog
-migrations/                       # Initial SQLite schema (design artifact)
+migrations/                       # Versioned SQLite schema (0001–0003)
 ```
 
 ## V1 delivery sequence
 
-**Spike 0: OpenCode 2 attachment verified on Windows; remaining reliability/Linux checks open** → **M1: OpenCode event ingestion + memory** → **M2: learning + evaluation + publication** → **M3: guardrails and optional T3 UI**. **Codex support is deferred**, not removed from the provider-neutral design.
+**Spike 0: OpenCode 2 attachment verified on Windows; remaining reliability/Linux checks open** → **M1: OpenCode event ingestion + memory** → **M2: learning + evaluation + publication** → **M3: guardrails and independent local GUI**. **Codex support is deferred**, not removed from the provider-neutral design.
 
 Proceed with OpenCode-only implementation after the observed Windows CLI/T3 attachment. Before claiming an OpenCode release, validate fail-open operation, durability, child-agent coverage where supported, and Linux. Codex CLI/T3 attachment does not gate the first release. See [ADR-0009](docs/adr/0009-opencode-first-release.md).
 
 ## Current delivery priority
 
 **OpenCode 2.x is the sole V1 runtime target.** Spike 0 observed plugin callbacks and context injection in both direct CLI and T3-launched sessions on Windows. Codex App Server hook delivery under T3 remains unverified; defer its adapter and acceptance gate rather than patching T3 or bypassing hook trust. See [Windows evidence](docs/plan/spike-0-windows-evidence.md) and [ADR-0009](docs/adr/0009-opencode-first-release.md).
+
+## Running the implementation
+
+See [the runtime runbook](docs/operations/runtime.md) for commands, scope handling, testing, and release limitations.
+
+## Local monitoring GUI
+
+After starting the daemon:
+
+```bash
+npm run ui
+# Or print a one-time URL without opening a browser:
+npm run cli -- ui --no-open
+```
+
+The console is served on the daemon's loopback port, with read-only browser authentication. It displays project-level activity, sessions, jobs, memories, proposals, evaluations, releases, audit, connectors and inference estimates. A browser cookie never grants access to the private write API. See [runtime](docs/operations/runtime.md) and [UI decision](docs/adr/0010-local-observability-ui.md).
 
 ## Initial technical decisions
 

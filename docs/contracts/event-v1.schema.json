@@ -48,6 +48,7 @@
         "inputTokens": { "type": "integer", "minimum": 0 },
         "outputTokens": { "type": "integer", "minimum": 0 },
         "cacheReadTokens": { "type": "integer", "minimum": 0 },
+        "costMicrousd": { "type": "integer", "minimum": 0 },
         "errorCode": { "type": "string", "maxLength": 128 },
         "diagnosticCode": { "type": "string", "maxLength": 128 },
         "resultCategory": { "type": "string", "maxLength": 128 },

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "runId": "REPLACE_WITH_RUN_ID",
+  "startedAtUtc": null,
+  "finishedAtUtc": null,
+  "gitSha": null,
+  "environment": {
+    "os": null,
+    "osBuild": null,
+    "node": null,
+    "opencode": null,
+    "t3": null,
+    "launcher": null
+  },
+  "fixture": {
+    "projectId": null,
+    "sourceInstanceId": null,
+    "digestSha256": null,
+    "description": "synthetic-only fixture"
+  },
+  "tests": [
+    {
+      "id": "AT-001",
+      "status": "INCONCLUSIVE",
+      "expected": null,
+      "observed": null,
+      "startedAtUtc": null,
+      "finishedAtUtc": null,
+      "commands": [],
+      "metrics": {
+        "p50Ms": null,
+        "p95Ms": null,
+        "p99Ms": null
+      },
+      "evidence": [
+        {
+          "type": "ci|log|screenshot|digest|replay",
+          "reference": null,
+          "sha256": null
+        }
+      ],
+      "notes": "Replace placeholder; never mark pass without observed evidence."
+    }
+  ],
+  "gateStatus": {
+    "G0": "INCONCLUSIVE",
+    "G1": "INCONCLUSIVE",
+    "G2": "INCONCLUSIVE",
+    "G3": "INCONCLUSIVE",
+    "G4": "INCONCLUSIVE",
+    "G5": "INCONCLUSIVE"
+  },
+  "releaseDecision": "NO-GO",
+  "risks": [],
+  "reviewedBy": null
+}

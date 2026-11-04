@@ -29,6 +29,7 @@ An autonomous, provider-independent local learning companion for coding agents. 
 | FR-017 | Expose events, release history, metrics and diagnoses through CLI/local read APIs | Should | AT-019 |
 | FR-018 | Separate Windows and Linux user scopes; no Docker/remote dependency | Must | AT-020 |
 | FR-019 | Independent restart and lifecycle from T3 without changing its core | Must | AT-021 |
+| FR-020 | Authenticated local read-only dashboard shows persisted activity across projects, scoped pagination and refresh | Must | UI-001–012 |
 
 ## Scope
 
@@ -55,7 +56,7 @@ Memory records are not necessarily skills. A single correction creates a project
 
 ## Out of scope
 
-A new agent loop, DAG scheduling, cancellation and retry of agent tasks, UI-driven manual task control, model traffic proxy, OAuth credential custody, arbitrary code mutation, distributed learning and synchronization, automatic external telemetry, model weight training.
+A new agent loop, DAG scheduling, cancellation and retry of agent tasks, UI-driven manual task control, remote administration, model traffic proxy, OAuth credential custody, arbitrary code mutation, distributed learning and synchronization, automatic external telemetry, model weight training.
 
 ## Dependencies and assumptions
 
