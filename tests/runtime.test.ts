@@ -263,5 +263,15 @@ test("session execution lifecycle is independent of conversation closure",()=>{
     assert.equal(read().status,"completed");
     assert.equal(read().lifecycleStatus,"completed");
     assert.ok(read().finishedAt);
+
+    // A delayed spool replay can arrive after its newer completion.
+    const session="delayed-replay-session";
+    f.store.ingest(event(f.a,{nativeSessionId:session,eventType:"turn.ended",outcome:"succeeded",
+      occurredAt:"2026-11-04T02:00:01.000Z"}));
+    f.store.ingest(event(f.a,{nativeSessionId:session,eventType:"turn.started",outcome:"unknown",
+      occurredAt:"2026-11-04T02:00:00.000Z"}));
+    const replayed=history(f.store,{kind:"sessions",projectId:f.a}).items.find(x=>x.sessionId===session);
+    assert.equal(replayed?.executionStatus,"succeeded");
+    assert.equal(replayed?.status,"idle");
   }finally{f.end();}
 });

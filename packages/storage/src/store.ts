@@ -124,7 +124,11 @@ export class Store {
             finished_at=excluded.finished_at,
             event_sequence=excluded.event_sequence,
             updated_at=excluded.updated_at
-          WHERE excluded.event_sequence>session_execution_state.event_sequence`,
+          WHERE julianday((SELECT occurred_at FROM events WHERE sequence=excluded.event_sequence)) >
+                julianday((SELECT occurred_at FROM events WHERE sequence=session_execution_state.event_sequence))
+             OR (julianday((SELECT occurred_at FROM events WHERE sequence=excluded.event_sequence)) =
+                 julianday((SELECT occurred_at FROM events WHERE sequence=session_execution_state.event_sequence))
+                 AND excluded.event_sequence>session_execution_state.event_sequence)`,
           sessionId,executionStatus,event.eventType==="turn.started"?event.occurredAt:null,
           event.eventType==="turn.ended"?event.occurredAt:null,seq,t);
       }

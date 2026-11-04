@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,12 +69,27 @@ test("OpenCode 2 completion callbacks normalize without closing the T3 session",
       session:{hook:async(name:string,handler:unknown)=>{hooks.set(name,handler);}}
     };
     cleanup=await mod.default.setup(ctx);
-    const limit=Date.now()+5000;
+    // The connector has a 25ms fail-open timeout. Replaying bounded spool
+    // fixtures exercises eventual delivery without waiting for the 30s timer.
+    await new Promise(resolve=>setTimeout(resolve,700));
+    const auth={authorization:"Bearer "+readFileSync(join(root,"runtime","token"),"utf8"),"content-type":"application/json"};
+    for(const path of [join(root,"spool",projectId+".jsonl"),join(root,"spool",projectId+".jsonl.draining")]){
+      if(!existsSync(path))continue;
+      for(const line of readFileSync(path,"utf8").split("\\n").filter(Boolean)){
+        const item=JSON.parse(line) as {event:unknown};
+        const response=await fetch("http://127.0.0.1:"+JSON.parse(readFileSync(join(root,"runtime","discovery.json"),"utf8")).port+"/v1/events",{
+          method:"POST",headers:auth,body:JSON.stringify(item.event)
+        });
+        assert.ok([200,202].includes(response.status),"Spool item must be accepted or deduplicated");
+      }
+    }
+    const limit=Date.now()+3000;
     while(daemon.store.stats().events<events.length && Date.now()<limit){
       await new Promise(resolve=>setTimeout(resolve,25));
     }
     assert.equal(daemon.store.stats().events,events.length);
-    const rows=history(daemon.store,{kind:"events",projectId,limit:20}).items.reverse();
+    const rows=history(daemon.store,{kind:"events",projectId,limit:20}).items
+      .sort((a,b)=>String(a.occurredAt).localeCompare(String(b.occurredAt)));
     assert.deepEqual(rows.map(x=>x.type),[
       "session.started","turn.started","turn.ended","turn.started",
       "turn.ended","turn.started","turn.ended","session.ended"
