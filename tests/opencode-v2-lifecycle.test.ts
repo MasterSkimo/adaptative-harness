@@ -75,7 +75,7 @@ test("OpenCode 2 completion callbacks normalize without closing the T3 session",
     const auth={authorization:"Bearer "+readFileSync(join(root,"runtime","token"),"utf8"),"content-type":"application/json"};
     for(const path of [join(root,"spool",projectId+".jsonl"),join(root,"spool",projectId+".jsonl.draining")]){
       if(!existsSync(path))continue;
-      for(const line of readFileSync(path,"utf8").split("\\n").filter(Boolean)){
+      for(const line of readFileSync(path,"utf8").split("\n").filter(Boolean)){
         const item=JSON.parse(line) as {event:unknown};
         const response=await fetch("http://127.0.0.1:"+JSON.parse(readFileSync(join(root,"runtime","discovery.json"),"utf8")).port+"/v1/events",{
           method:"POST",headers:auth,body:JSON.stringify(item.event)
