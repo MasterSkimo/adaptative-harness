@@ -10,7 +10,7 @@ const eventTypes = new Set(["session.started","session.ended","turn.started","tu
 const outcomes = new Set(["succeeded","failed","cancelled","blocked","unknown"]);
 const metaKeys: Record<string, "string" | "integer" | "digest"> = {
   toolName:"string",inputDigest:"digest",outputDigest:"digest",durationMs:"integer",
-  inputTokens:"integer",outputTokens:"integer",cacheReadTokens:"integer",
+  inputTokens:"integer",outputTokens:"integer",cacheReadTokens:"integer",costMicrousd:"integer",
   errorCode:"string",diagnosticCode:"string",resultCategory:"string",
   evidenceId:"string",correlationDigest:"digest"
 };

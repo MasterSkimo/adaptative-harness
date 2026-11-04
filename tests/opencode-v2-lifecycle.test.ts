@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { stripTypeScriptTypes } from "node:module";
 import { Daemon } from "../apps/daemon/src/server.ts";
 import { atomicPrivate, sourceId } from "../packages/core/src/config.ts";
-import { history } from "../packages/core/src/dashboard.ts";
+import { history, overview } from "../packages/core/src/dashboard.ts";
 
 /**
  * Feed a realistic OpenCode 2 callback stream through the actual plugin's
@@ -20,7 +20,9 @@ test("OpenCode 2 completion callbacks normalize without closing the T3 session",
   const projectRoot=join(root,"test-project");
   mkdirSync(projectRoot,{recursive:true});
   const previousHome=process.env.ADAPTIVE_HARNESS_HOME;
+  const previousLauncher=process.env.ADAPTIVE_HARNESS_LAUNCHER;
   process.env.ADAPTIVE_HARNESS_HOME=root;
+  process.env.ADAPTIVE_HARNESS_LAUNCHER="t3";
   const daemon=new Daemon(root);
   let started=false;
   let cleanup:undefined|(()=>void);
@@ -43,30 +45,42 @@ test("OpenCode 2 completion callbacks normalize without closing the T3 session",
     const mod=await import("data:text/javascript;base64,"+Buffer.from(executable).toString("base64"));
 
     const events=[
-      "session.created",
-      "session.execution.started",
-      "session.execution.succeeded",
-      "session.execution.started",
-      "session.execution.failed",
-      "session.execution.started",
-      "session.execution.interrupted",
-      "session.deleted"
+      {type:"session.created"},
+      {type:"session.execution.started"},
+      {type:"session.usage.updated",data:{
+        cost:0.001234,
+        tokens:{input:100,output:20,reasoning:5,cache:{read:30,write:2}}
+      }},
+      {type:"session.execution.succeeded"},
+      {type:"session.execution.started"},
+      {type:"session.execution.failed"},
+      {type:"session.execution.started"},
+      {type:"session.execution.interrupted"},
+      {type:"session.deleted"}
     ];
     const nativeId="t3-session-fixture";
     const callback=async function*(){
-      for(const type of events){
-        // Real V2 callbacks carry sessionID under properties.
-        yield {type,properties:{sessionID:nativeId}};
+      let created=Date.now();
+      for(const event of events){
+        // Real V2 bus callbacks carry the session ID under `data`.
+        yield {type:event.type,created:created++,data:{sessionID:nativeId,...(event as {data?:object}).data}};
         await new Promise(resolve=>setTimeout(resolve,30));
       }
     };
     const hooks=new Map<string,unknown>();
+    let reads=0;
     const ctx={
       location:{project:{canonical:projectRoot},directory:projectRoot},
       app:{version:"2.2.x"},
       event:{subscribe:(_input:unknown)=>callback()},
       tool:{hook:async(name:string,handler:unknown)=>{hooks.set(name,handler);}},
-      session:{hook:async(name:string,handler:unknown)=>{hooks.set(name,handler);}}
+      session:{
+        hook:async(name:string,handler:unknown)=>{hooks.set(name,handler);},
+        get:async()=>{
+          reads+=1;
+          return {cost:0.001*reads,tokens:{input:90+reads*10,output:18+reads*2,reasoning:4,cache:{read:25,write:2}}};
+        }
+      }
     };
     cleanup=await mod.default.setup(ctx);
     // The connector has a 25ms fail-open timeout. Replaying bounded spool
@@ -84,10 +98,11 @@ test("OpenCode 2 completion callbacks normalize without closing the T3 session",
       }
     }
     const limit=Date.now()+3000;
-    while(daemon.store.stats().events<events.length && Date.now()<limit){
+    const expected=8; // usage.updated annotates the following turn.ended, it is not an event of its own.
+    while(daemon.store.stats().events<expected && Date.now()<limit){
       await new Promise(resolve=>setTimeout(resolve,25));
     }
-    assert.equal(daemon.store.stats().events,events.length);
+    assert.equal(daemon.store.stats().events,expected);
     const rows=history(daemon.store,{kind:"events",projectId,limit:20}).items
       .sort((a,b)=>String(a.occurredAt).localeCompare(String(b.occurredAt)));
     assert.deepEqual(rows.map(x=>x.type),[
@@ -98,6 +113,9 @@ test("OpenCode 2 completion callbacks normalize without closing the T3 session",
       "unknown","unknown","succeeded","unknown",
       "failed","unknown","cancelled","succeeded"
     ]);
+    // The first turn reports the cumulative usage observed during that turn.
+    // The live snapshot (cache 30, cost 1234) is newer than the session record.
+    assert.deepEqual(rows[2].metadata,{inputTokens:100,outputTokens:20,cacheReadTokens:30,costMicrousd:1234});
     assert.ok(hooks.has("execute.before"));
     assert.ok(hooks.has("execute.after"));
     assert.ok(hooks.has("context"));
@@ -106,11 +124,20 @@ test("OpenCode 2 completion callbacks normalize without closing the T3 session",
     assert.equal(session.executionStatus,"cancelled");
     assert.equal(session.status,"completed");
     assert.ok(session.finishedAt);
+    const usage=overview(daemon.store,projectId).usage;
+    assert.equal(usage.inputTokens,120);
+    assert.equal(usage.outputTokens,24);
+    assert.equal(usage.estimatedCostMicrousd,3000);
+    const instance=history(daemon.store,{kind:"sources",projectId}).items[0];
+    assert.equal(instance.launcher,"t3");
+    assert.equal(instance.runtimeVersion,"2.2.x");
   }finally{
     cleanup?.();
     if(started)await daemon.stop();else daemon.store.close();
     if(previousHome===undefined)delete process.env.ADAPTIVE_HARNESS_HOME;
     else process.env.ADAPTIVE_HARNESS_HOME=previousHome;
+    if(previousLauncher===undefined)delete process.env.ADAPTIVE_HARNESS_LAUNCHER;
+    else process.env.ADAPTIVE_HARNESS_LAUNCHER=previousLauncher;
     rmSync(root,{recursive:true,force:true});
   }
 });

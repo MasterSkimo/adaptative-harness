@@ -172,10 +172,20 @@ export function overview(store:Store,projectId?:string){
     SUM(CASE WHEN event_type='tool.completed' AND outcome='failed' THEN 1 ELSE 0 END) AS failures
     FROM events${projectWhere} GROUP BY substr(received_at,1,13) ORDER BY hour DESC LIMIT 24`,...params).reverse();
   const lastEventAt=store.get("SELECT MAX(received_at) AS at FROM events"+projectWhere,...params)?.at??null;
-  const usage=store.get(`SELECT COALESCE(SUM(input_tokens),0) AS inputTokens,
+  // Provider-reported agent usage plus Harness-owned external inference, kept as estimates.
+  const observed=store.get(`SELECT COALESCE(SUM(u.input_tokens),0) AS inputTokens,
+    COALESCE(SUM(u.output_tokens),0) AS outputTokens,
+    COALESCE(SUM(u.estimated_cost_microusd),0) AS estimatedCostMicrousd
+    FROM session_usage u JOIN sessions s ON s.id=u.session_id${projectId?" WHERE s.project_id=?":""}`,...params);
+  const external=store.get(`SELECT COALESCE(SUM(input_tokens),0) AS inputTokens,
     COALESCE(SUM(output_tokens),0) AS outputTokens,
     COALESCE(SUM(estimated_cost_microusd),0) AS estimatedCostMicrousd
     FROM inference_usage${projectWhere}`,...params);
+  const usage={
+    inputTokens:Number(observed?.inputTokens??0)+Number(external?.inputTokens??0),
+    outputTokens:Number(observed?.outputTokens??0)+Number(external?.outputTokens??0),
+    estimatedCostMicrousd:Number(observed?.estimatedCostMicrousd??0)+Number(external?.estimatedCostMicrousd??0)
+  };
   const jobs=store.all("SELECT status,COUNT(*) AS count FROM processing_jobs"+projectWhere+
     " GROUP BY status ORDER BY status",...params);
   return {

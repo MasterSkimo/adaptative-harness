@@ -36,6 +36,10 @@ node --experimental-strip-types apps/cli/src/main.ts daemon stop
 
 After startup, use `status` and `doctor --provider opencode --launcher cli` to diagnose the Harness process and native callback coverage. OpenCode discovers project plugins when loading its configuration. Test direct CLI and T3-launched sessions separately; neither launcher is automatically assumed supported.
 
+The plugin and CLI detect the launcher without extra configuration: an explicit `ADAPTIVE_HARNESS_LAUNCHER=cli|t3|other` wins, otherwise a T3 process (`T3CODE_CLI_PATH`/`T3CODE_SESSION_ID`) is recorded as `t3` and a plain OpenCode process as `cli`. Ingested events remain authoritative, so a source registered before the first callback is corrected to the observed launcher and provider version. `doctor` uses the same detection when `--launcher` is omitted.
+
+OpenCode publishes cumulative per-session usage (`session.usage.updated`, and the session record itself). The plugin attaches the latest input/output/cache-read token counts and the estimated cost to each `turn.ended` event. The store keeps the newest snapshot per session (`session_usage`) and the overview adds it to Harness-owned external inference usage. These values are estimates, not provider billing truth.
+
 The daemon takes `runtime/daemon.lock` before listening, so a second instance on the same state root fails without touching the live process. It listens on an ephemeral `127.0.0.1` port. Its discovery file contains only protocol, port, PID, instance ID and state-root fingerprint; its bearer token is in a separate private file. The CLI creates a project/root registration and a source-to-project binding so arbitrary incoming project IDs do not suffice.
 
 ## Pipeline
@@ -119,4 +123,10 @@ npm run start
 npm run ui
 ```
 
-The installer updates an **exact unmodified previous plugin version**, but refuses to overwrite locally edited or unknown content. The daemon applies migration 0004 on startup. Start a **new execution** in T3 after restarting; the new execution events, not old idle sessions, are what prove the fix. Native T3 testing remains an acceptance requirement; synthetic CI callback playback is not a live provider test.
+The installer updates an **exact unmodified previous plugin version**, but refuses to overwrite locally edited or unknown content. The daemon applies migrations through 0005 on startup. Start a **new execution** in T3 after restarting; the new execution events, not old idle sessions, are what prove the fix. Native T3 testing remains an acceptance requirement; synthetic CI callback playback is not a live provider test.
+
+## Diagnosing launcher, execution state and token usage
+
+- **Launcher `unknown`**: register a project or emit one event after upgrading the plugin. Explicit `ADAPTIVE_HARNESS_LAUNCHER` wins; otherwise T3 is detected from `T3CODE_*` and plain OpenCode from `OPENCODE*`. Ingested event metadata is authoritative and refreshes a source that was registered earlier as `unknown`.
+- **Conversation `Inconnu` / execution `Non observé`**: no `session_execution_state` row exists. OpenCode 2 bus events carry their identity under `data.sessionID` (tool hooks use `sessionID` directly); an adapter that only reads the hook shape silently drops every `session.*` event. Check that `events.event_type` contains `turn.started`/`turn.ended`, not only tool events.
+- **Tokens `0 / 0`**: usage is attached to each `turn.ended` from the cumulative session record. A history with only tool events predates usage capture; a new execution populates `session_usage`. The overview adds this observed usage to Harness-owned external inference, and both are estimates.

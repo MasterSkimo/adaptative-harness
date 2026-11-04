@@ -23,6 +23,13 @@ const mapping=join(root,"runtime","projects.json");
 const dbPath=join(root,"data","harness.sqlite");
 const pluginSource=new URL("../../../packages/connectors/opencode/plugin/index.ts",import.meta.url);
 function store(){return new Store(dbPath,{retentionDays:loadSettings(root).memory.retentionDays});}
+function launcherName(){
+  const configured=process.env.ADAPTIVE_HARNESS_LAUNCHER;
+  if(configured==="cli"||configured==="t3"||configured==="other")return configured;
+  if(process.env.T3CODE_CLI_PATH||process.env.T3CODE_SESSION_ID)return "t3";
+  if(process.env.OPENCODE||process.env.OPENCODE_TERMINAL)return "cli";
+  return "unknown";
+}
 function ensureProvider(){
   const provider=flag("provider")||"opencode";
   if(provider!=="opencode")throw new Error("Codex connector deferred by ADR-0009");
@@ -36,7 +43,7 @@ function registerProject(path:string){
   const s=store();
   try{
     const projectId=s.registerProject(actual,basename(actual));
-    s.bindSource(sourceId(root),projectId);
+    s.bindSource(sourceId(root),projectId,"opencode",launcherName());
     const m=sourceMap();m[fileHash(actual)]=projectId;
     atomicPrivate(mapping,JSON.stringify(m));
     return {projectId,root:actual};
@@ -55,7 +62,10 @@ function install(remove=false){
   const content=readFileSync(pluginSource,"utf8");
   const current=existsSync(target)?readFileSync(target,"utf8"):undefined;
   // Recognize an exact previously managed plugin; refuse any user-modified file.
-  const previouslyManaged=new Set(["0ae9e6d4c16c9109933f231231f7c4ef821ceb9a"]);
+  const previouslyManaged=new Set([
+    "0ae9e6d4c16c9109933f231231f7c4ef821ceb9a", // before execution lifecycle events
+    "3357c8f3f2937f47da3ea269a6a2a62d702e293e"  // execution lifecycle events, before usage capture
+  ]);
   const gitBlob=(value:string)=>createHash("sha1")
     .update("blob "+Buffer.byteLength(value,"utf8"))
     .update(Buffer.from([0])).update(value).digest("hex");
@@ -84,9 +94,9 @@ function doctor(){
   let observed:Record<string,unknown>={};
   try{observed=JSON.parse(readFileSync(join(root,"runtime","capabilities-opencode.json"),"utf8"));}
   catch{}
-  const name=flag("launcher")||"unknown";
+  const name=flag("launcher")||launcherName();
   const supported=new Set(Array.isArray(observed.observed)&&observed.launcher===name?observed.observed:[]);
-  const kinds=["session_events","session_execution_events","tool_before","tool_after","subagent_lifecycle","transcript_reference",
+  const kinds=["session_events","session_execution_events","session_usage_events","tool_before","tool_after","subagent_lifecycle","transcript_reference",
     "context_injection","compaction","synchronous_block","skills_read","skills_write","config_reload"];
   const capabilities=Object.fromEntries(kinds.map(k=>[k,{status:supported.has(k)?"supported":"unknown",
     observedAt:supported.has(k)?observed.at:null,providerVersion,launcher:name,os:process.platform}]));

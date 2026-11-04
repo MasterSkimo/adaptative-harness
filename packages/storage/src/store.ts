@@ -34,6 +34,7 @@ export class Store {
     this.db.exec(readFileSync(join(schemaDir,"0002_source_bindings.sql"),"utf8"));
     this.db.exec(readFileSync(join(schemaDir,"0003_proposal_evidence.sql"),"utf8"));
     this.db.exec(readFileSync(join(schemaDir,"0004_session_execution_state.sql"),"utf8"));
+    this.db.exec(readFileSync(join(schemaDir,"0005_session_usage.sql"),"utf8"));
   }
   close(){this.db.close();}
   txn<T>(fn:()=>T):T {
@@ -68,6 +69,9 @@ export class Store {
       if(old && old.provider!==provider)throw new ContractError("Source/provider mismatch",403);
       this.run("INSERT OR IGNORE INTO provider_instances(id,provider,runtime_version,launcher,profile_fingerprint,capabilities_json,created_at,updated_at) VALUES(?,?,?,?,?,'{}',?,?)",source,provider,version,launcher,sha(source),t,t);
       this.run("INSERT OR IGNORE INTO source_project_bindings(source_instance_id,project_id,created_at) VALUES(?,?,?)",source,project,t);
+      // Registration may run before the launcher is known; never keep a stale default.
+      if(launcher!=="unknown")this.run("UPDATE provider_instances SET launcher=?,updated_at=? WHERE id=?",launcher,t,source);
+      if(version)this.run("UPDATE provider_instances SET runtime_version=?,updated_at=? WHERE id=?",version,t,source);
     });
   }
   authorized(source:string,project:string,provider:string):boolean {
@@ -102,6 +106,14 @@ export class Store {
       const out=this.run(`INSERT INTO events(source_instance_id,event_id,project_id,session_id,native_session_id,event_type,schema_version,occurred_at,observed_at,received_at,outcome,privacy_class,payload_digest,sanitized_payload_json)
         VALUES(?,?,?,?,?,?,1,?,?,?,?,?,?,?)`,event.sourceInstanceId,event.eventId,event.projectId,sessionId,nativeId,event.eventType,event.occurredAt,event.observedAt,t,event.outcome??null,event.privacyClass,fingerprint,payload);
       const seq=Number(out.lastInsertRowid);
+      // The event stream is authoritative for launcher and provider version:
+      // a source registered before the first callback stays accurate.
+      if(event.launcher && event.launcher!=="unknown"){
+        this.run("UPDATE provider_instances SET launcher=?,updated_at=? WHERE id=?",event.launcher,t,event.sourceInstanceId);
+      }
+      if(event.providerVersion){
+        this.run("UPDATE provider_instances SET runtime_version=?,updated_at=? WHERE id=?",event.providerVersion,t,event.sourceInstanceId);
+      }
       const status=event.outcome==="failed"?"failed":event.outcome==="cancelled"?"cancelled":"completed";
       if(event.eventType==="session.ended"){
         // Only a native session deletion closes the conversation itself.
@@ -131,6 +143,30 @@ export class Store {
                  AND excluded.event_sequence>session_execution_state.event_sequence)`,
           sessionId,executionStatus,event.eventType==="turn.started"?event.occurredAt:null,
           event.eventType==="turn.ended"?event.occurredAt:null,seq,t);
+      }
+      if(event.eventType==="turn.ended" && event.metadata){
+        // OpenCode publishes cumulative per-session totals; keep the newest snapshot.
+        const metadata=event.metadata;
+        const metric=(value:unknown)=>Number.isSafeInteger(value)&&Number(value)>=0?Number(value):0;
+        const hasUsage=Number.isSafeInteger(metadata.inputTokens)||Number.isSafeInteger(metadata.outputTokens)||
+          Number.isSafeInteger(metadata.cacheReadTokens)||Number.isSafeInteger(metadata.costMicrousd);
+        if(hasUsage)this.run(`INSERT INTO session_usage(
+            session_id,input_tokens,output_tokens,cache_read_tokens,estimated_cost_microusd,event_sequence,updated_at)
+          VALUES(?,?,?,?,?,?,?)
+          ON CONFLICT(session_id) DO UPDATE SET
+            input_tokens=excluded.input_tokens,
+            output_tokens=excluded.output_tokens,
+            cache_read_tokens=excluded.cache_read_tokens,
+            estimated_cost_microusd=excluded.estimated_cost_microusd,
+            event_sequence=excluded.event_sequence,
+            updated_at=excluded.updated_at
+          WHERE julianday((SELECT occurred_at FROM events WHERE sequence=excluded.event_sequence)) >
+                julianday((SELECT occurred_at FROM events WHERE sequence=session_usage.event_sequence))
+             OR (julianday((SELECT occurred_at FROM events WHERE sequence=excluded.event_sequence)) =
+                 julianday((SELECT occurred_at FROM events WHERE sequence=session_usage.event_sequence))
+                 AND excluded.event_sequence>session_usage.event_sequence)`,
+          sessionId,metric(metadata.inputTokens),metric(metadata.outputTokens),
+          metric(metadata.cacheReadTokens),metric(metadata.costMicrousd),seq,t);
       }
       this.run(`INSERT INTO processing_jobs(id,idempotency_key,event_sequence,project_id,job_type,available_at,created_at,updated_at)
         VALUES(?,?,?,?,'classify',?,?,?)`,randomUUID(),"classify:"+event.sourceInstanceId+":"+event.eventId,seq,event.projectId,t,t,t);

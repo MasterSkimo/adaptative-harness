@@ -9,7 +9,7 @@ Per-user data root is configurable, with OS-specific defaults selected at implem
 ## Schema aggregates
 
 - `projects`, `project_roots`: opaque identities and verified workspace roots.
-- `provider_instances`, `sessions`: actual runtime/profile/session and parent lineage.
+- `provider_instances`, `sessions`, `session_execution_state`, `session_usage`: actual runtime/profile/session, parent lineage, last observed execution and provider-reported token/cost usage.
 - `events`: append-only canonical event envelopes, unique on producer ID+event ID.
 - `processing_jobs`: durable work, idempotency keys, leases, retry/dead states.
 - `evidence`: redacted references and hashes to observed outcomes.

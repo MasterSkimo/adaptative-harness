@@ -275,3 +275,35 @@ test("session execution lifecycle is independent of conversation closure",()=>{
     assert.equal(replayed?.status,"idle");
   }finally{f.end();}
 });
+test("provider usage snapshots replace instead of accumulate and refresh the source",()=>{
+  const f=fixture();
+  try{
+    const session="usage-session";
+    f.store.ingest(event(f.a,{nativeSessionId:session,eventType:"turn.ended",outcome:"succeeded",launcher:"t3",
+      providerVersion:"2.2.5",occurredAt:"2026-11-04T02:00:00.000Z",
+      metadata:{inputTokens:100,outputTokens:20,cacheReadTokens:30,costMicrousd:1234}}));
+    let usage=overview(f.store,f.a).usage;
+    assert.equal(usage.inputTokens,100);
+    assert.equal(usage.outputTokens,20);
+    assert.equal(usage.estimatedCostMicrousd,1234);
+    const source=history(f.store,{kind:"sources",projectId:f.a}).items[0];
+    assert.equal(source.launcher,"t3");
+    assert.equal(source.runtimeVersion,"2.2.5");
+
+    // A later snapshot carries the new cumulative totals.
+    f.store.ingest(event(f.a,{nativeSessionId:session,eventType:"turn.ended",outcome:"succeeded",launcher:"t3",
+      occurredAt:"2026-11-04T02:00:01.000Z",
+      metadata:{inputTokens:250,outputTokens:60,cacheReadTokens:40,costMicrousd:2000}}));
+    usage=overview(f.store,f.a).usage;
+    assert.equal(usage.inputTokens,250);
+    assert.equal(usage.outputTokens,60);
+
+    // A delayed older snapshot must not roll the totals back.
+    f.store.ingest(event(f.a,{nativeSessionId:session,eventType:"turn.ended",outcome:"succeeded",
+      occurredAt:"2026-11-04T01:59:59.000Z",metadata:{inputTokens:5,outputTokens:1}}));
+    usage=overview(f.store,f.a).usage;
+    assert.equal(usage.inputTokens,250);
+    assert.equal(usage.outputTokens,60);
+    assert.equal(f.store.get("SELECT COUNT(*) n FROM session_usage")?.n,1);
+  }finally{f.end();}
+});

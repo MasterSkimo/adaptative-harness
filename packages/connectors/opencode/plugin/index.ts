@@ -84,7 +84,7 @@ async function flush(project:string){
 function envelope(p:{source:string;project:string;version?:string;session:string;kind:string;key:string;at?:string;outcome?:string;metadata?:Value;parent?:string;agent?:string;launcher?:string}){
   const at=new Date().toISOString();
   const payload:Value={schemaVersion:1,eventId:uuid(p.key),sourceInstanceId:p.source,provider:"opencode",
-    providerVersion:p.version||null,launcher:p.launcher==="t3"?"t3":p.launcher==="cli"?"cli":"unknown",
+    providerVersion:p.version||null,launcher:p.launcher==="t3"?"t3":p.launcher==="cli"?"cli":p.launcher==="other"?"other":"unknown",
     nativeSessionId:p.session,projectId:p.project,eventType:p.kind,occurredAt:p.at||at,observedAt:at,
     privacyClass:"metadata",outcome:p.outcome||"unknown"};
   if(p.parent)payload.parentNativeSessionId=p.parent;
@@ -93,13 +93,28 @@ function envelope(p:{source:string;project:string;version?:string;session:string
   return payload;
 }
 function session(value:Value):string|undefined{
-  const info=record(value.info),properties=record(value.properties),nested=record(properties.info);
-  return first(value.sessionID,value.sessionId,properties.sessionID,properties.sessionId,nested.id,info.id);
+  const info=record(value.info),properties=record(value.properties),nested=record(properties.info),
+    data=record(value.data);
+  return first(value.sessionID,value.sessionId,properties.sessionID,properties.sessionId,
+    data.sessionID,data.sessionId,nested.id,info.id);
 }
 function parent(value:Value):string|undefined{
-  const info=record(value.info),properties=record(value.properties);
-  return first(value.parentID,value.parentSessionID,properties.parentID,record(properties.info).parentID,info.parentID);
+  const info=record(value.info),properties=record(value.properties),data=record(value.data);
+  return first(value.parentID,value.parentSessionID,properties.parentID,data.parentID,
+    record(properties.info).parentID,info.parentID);
 }
+const integer=(v:unknown):number|undefined=>{
+  const n=Number(v);
+  return Number.isSafeInteger(n)&&n>=0?n:undefined;
+};
+const launcherName=():string=>{
+  // Explicit configuration wins; otherwise recognize the wrappers we can prove.
+  const configured=text(process.env.ADAPTIVE_HARNESS_LAUNCHER);
+  if(configured==="cli"||configured==="t3"||configured==="other")return configured;
+  if(process.env.T3CODE_CLI_PATH||process.env.T3CODE_SESSION_ID)return "t3";
+  if(process.env.OPENCODE||process.env.OPENCODE_TERMINAL)return "cli";
+  return "unknown";
+};
 export default Plugin.define({
   id:"adaptive-harness",
   async setup(ctx){
@@ -123,7 +138,7 @@ export default Plugin.define({
     // retries preserve the same already-normalized event ID.
     const lifecycleBoot=randomUUID();
     let lifecycleSequence=0;
-    const launcher=text(process.env.ADAPTIVE_HARNESS_LAUNCHER)||"unknown";
+    const launcher=launcherName();
     // Only claim capabilities when a callback actually fired.
     const observed=new Set<string>();
     function capability(name:string){
@@ -136,11 +151,47 @@ export default Plugin.define({
     }
     void flush(project);
     const retry=setInterval(()=>void flush(project),30000);retry.unref();
+    // OpenCode reports cumulative per-session usage. Keep the latest live
+    // snapshot, then confirm it against the session record when a turn ends.
+    const usageSnapshots=new Map<string,Value>();
+    const deadline=<T>(task:Promise<T>,ms:number):Promise<T>=>new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error("timeout")),ms);timer.unref();
+      task.then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});
+    });
+    const usageMetrics=(data:Value):Value=>{
+      const tokens=record(data.tokens),cache=record(tokens.cache),metadata:Value={};
+      const input=integer(tokens.input),output=integer(tokens.output),cacheRead=integer(cache.read);
+      if(input!==undefined)metadata.inputTokens=input;
+      if(output!==undefined)metadata.outputTokens=output;
+      if(cacheRead!==undefined)metadata.cacheReadTokens=cacheRead;
+      const cost=Number(data.cost);
+      if(Number.isFinite(cost)&&cost>=0)metadata.costMicrousd=Math.round(cost*1e6);
+      return metadata;
+    };
+    const turnUsage=async(nativeId:string):Promise<Value|undefined>=>{
+      let metadata:Value={};
+      try{metadata=usageMetrics(record(await deadline(ctx.session.get({sessionID:nativeId}),250)));}catch{}
+      const snapshot=usageSnapshots.get(nativeId);
+      if(snapshot)for(const [key,value] of Object.entries(snapshot)){
+        if(typeof value==="number" && (!(key in metadata) || value>Number(metadata[key])))metadata[key]=value;
+      }
+      usageSnapshots.delete(nativeId);
+      return Object.keys(metadata).length?metadata:undefined;
+    };
     void (async()=>{
       try{
         for await(const input of ctx.event.subscribe({signal:controller.signal})){
           const e=record(input),kind=text(e.type),native=session(e);
           if(!kind||!native)continue;
+          const at=Number.isFinite(Number(e.created))?new Date(Number(e.created)).toISOString():undefined;
+          if(kind==="session.usage.updated"){
+            const metadata=usageMetrics(record(e.data));
+            if(Object.keys(metadata).length){
+              usageSnapshots.set(native,metadata);
+              capability("session_usage_events");
+            }
+            continue;
+          }
           // OpenCode 2 emits execution lifecycle events, not session.idle.
           // Finishing an execution must not close a reusable T3 conversation.
           const mapped:Record<string,{kind:string;outcome:string}>={
@@ -158,9 +209,11 @@ export default Plugin.define({
           if(!transition)continue;
           capability("session_events");
           if(kind.startsWith("session.execution."))capability("session_execution_events");
+          const metadata=transition.kind==="turn.ended"?await turnUsage(native):undefined;
+          if(metadata)capability("session_usage_events");
           const event=envelope({source,project,version,session:native,kind:transition.kind,
             key:"lifecycle:"+lifecycleBoot+":"+(++lifecycleSequence)+":"+kind+":"+native,
-            parent:parent(e),
+            parent:parent(e),at,metadata,
             outcome:transition.outcome,launcher});
           send(event);
         }
