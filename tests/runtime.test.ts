@@ -224,7 +224,8 @@ test("session execution lifecycle is independent of conversation closure",()=>{
       f.store.ingest(event(f.a,{eventType:kind,outcome}));
     const read=()=>history(f.store,{kind:"sessions",projectId:f.a}).items[0];
     send("session.started");
-    assert.equal(read().status,"running");
+    // Session exists, but no execution has yet been observed.
+    assert.equal(read().status,"unknown");
     assert.equal(read().executionStatus,"unknown");
     const first=event(f.a,{eventType:"turn.started",outcome:"unknown"});
     f.store.ingest(first);

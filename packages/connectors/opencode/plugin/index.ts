@@ -118,6 +118,11 @@ export default Plugin.define({
     const failedSignatures=new Map<string,number>(); // Observe, never block, repeated identical failures.
 
     const controller=new AbortController();
+    // Session event payloads can be identical across turns. A per-plugin boot
+    // nonce + monotonic sequence avoids discarding later executions. Spool
+    // retries preserve the same already-normalized event ID.
+    const lifecycleBoot=randomUUID();
+    let lifecycleSequence=0;
     const launcher=text(process.env.ADAPTIVE_HARNESS_LAUNCHER)||"unknown";
     // Only claim capabilities when a callback actually fired.
     const observed=new Set<string>();
@@ -154,7 +159,8 @@ export default Plugin.define({
           capability("session_events");
           if(kind.startsWith("session.execution."))capability("session_execution_events");
           const event=envelope({source,project,version,session:native,kind:transition.kind,
-            key:kind+":"+native+":"+digest(e),parent:parent(e),
+            key:"lifecycle:"+lifecycleBoot+":"+(++lifecycleSequence)+":"+kind+":"+native,
+            parent:parent(e),
             outcome:transition.outcome,launcher});
           send(event);
         }
